@@ -3,8 +3,16 @@ import { bulkSetStatus } from '@/api/client';
 import { AssetDetail } from '@/features/assets/AssetDetail';
 import { AssetGrid } from '@/features/assets/AssetGrid';
 import { useAssets } from '@/features/assets/useAssets';
+import { chunk } from '@/lib/chunk';
+import { mapWithConcurrency } from '@/lib/concurrency';
 import { statusLabel } from '@/lib/format';
 import type { Asset, AssetStatus, AssetQuery } from '@/lib/types';
+
+// bulk-status hard caps ids at 50 per call; keep some headroom below that
+// and bound how many chunks run at once so this doesn't itself trip the
+// 80-req/10s rate limit when a reviewer selects hundreds of assets.
+const BULK_CHUNK_SIZE = 5;
+const BULK_CHUNK_CONCURRENCY = 3;
 
 const STATUSES: AssetStatus[] = ['draft', 'in_review', 'approved', 'archived'];
 const SORTS: Array<{ value: NonNullable<AssetQuery['sort']>; label: string }> = [
@@ -39,9 +47,20 @@ export function App() {
     if (ids.length === 0) return;
     setNotice(null);
     try {
-      // Sends every selected id in one call, which the API refuses above 50.
-      const result = await bulkSetStatus(ids, next);
-      setNotice(`${result.applied} updated, ${result.failed} failed.`);
+      // Split into <=50-id chunks (the API's hard cap) and run a handful
+      // concurrently rather than one request per chunk in serial.
+      //
+      // NOTE: this only fixes the "fails outright above 50" defect. It does
+      // not yet do optimistic updates, per-id failure reporting, or retrying
+      // the ~7% random `conflict` failures separately from the deterministic
+      // `legal_hold` ones -- that full treatment lands in Task 3.
+      const chunks = chunk(ids, BULK_CHUNK_SIZE);
+      const chunkResults = await mapWithConcurrency(chunks, BULK_CHUNK_CONCURRENCY, (idsChunk) =>
+        bulkSetStatus(idsChunk, next),
+      );
+      const applied = chunkResults.reduce((sum, r) => sum + r.applied, 0);
+      const failed = chunkResults.reduce((sum, r) => sum + r.failed, 0);
+      setNotice(`${applied} updated, ${failed} failed.`);
       setSelectedIds(new Set());
     } catch (err) {
       setNotice(err instanceof Error ? err.message : 'Bulk update failed');

@@ -35,7 +35,7 @@ Roughly, and how you split it.
 | 4 | `nextCursor` is stored but never used — only the first 24 assets ever load | `useAssets.ts` | TODO (Task 2) |
 | 5 | Entire asset list rendered via `.map`, no virtualization | `AssetGrid.tsx` | TODO (Task 2) |
 | 6 | Saving in the detail panel doesn't update the grid — `onSaved` is a no-op | `App.tsx` | TODO |
-| 7 | Errors flattened to a string; callers can't branch on `error.code` | `client.ts` | TODO (next commit) |
+| 7 | Errors flattened to a string; callers can't branch on `error.code` | `client.ts` | Fixed — `request()` now throws a typed `ApiError` (`status`, `code`, `retryAfterSeconds`, `requestId`) with an `isRetryable` getter encoding API.md's retry matrix. Consumed by the retry layer in Task 4. |
 | 8 | No retry/backoff/dedup — any transient 503/429/500 is a hard failure | `client.ts` | TODO (Task 4) |
 | 9 | Toggling one card's selection re-renders the entire grid | `AssetGrid.tsx` | TODO |
 | 10 | Cards are unreachable by keyboard — `div` + `onClick`, no `tabIndex`, no key handlers | `AssetGrid.tsx` | TODO (Task 5) |

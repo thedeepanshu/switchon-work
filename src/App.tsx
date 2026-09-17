@@ -52,7 +52,8 @@ export function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // Every keystroke sends a request. Nothing is debounced or cancelled.
+  // Search input is debounced and in-flight requests are cancelled when the
+  // filters change; the query key keeps each result tied to its filters.
   const { items, total, loading, error } = useAssets({ q, status, sort, limit: 24 });
 
   function toggleSelect(id: string) {

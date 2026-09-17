@@ -43,7 +43,7 @@ Roughly, and how you split it.
 | 12 | Missing thumbnails aren't checked via `hasThumbnail` before requesting — renders a broken-image icon | `AssetGrid.tsx`, `AssetDetail.tsx` | TODO |
 | 13 | Error and empty states collapse into each other — a fetch failure shows "Nothing matches" underneath the error banner | `App.tsx` / `AssetGrid.tsx` | TODO |
 | 14 | No live region — bulk outcomes and errors are silent to a screen reader | `App.tsx` | TODO (Task 5) |
-| 15 | Filter/search state lives only in React state, not the URL — reload loses it | `App.tsx` | TODO (next commits) |
+| 15 | Filter/search state lives only in React state, not the URL — reload loses it | `App.tsx` | Fixed — q/status/sort sync to the URL via history.replaceState (no history entry per keystroke); popstate restores state on back/forward. kind/tag aren't in the UI yet, so not yet in the URL either. |
 
 ---
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { bulkSetStatus } from '@/api/client';
 import { AssetDetail } from '@/features/assets/AssetDetail';
 import { AssetGrid } from '@/features/assets/AssetGrid';
@@ -6,6 +6,7 @@ import { useAssets } from '@/features/assets/useAssets';
 import { chunk } from '@/lib/chunk';
 import { mapWithConcurrency } from '@/lib/concurrency';
 import { statusLabel } from '@/lib/format';
+import { readFilterStateFromUrl, writeFilterStateToUrl } from '@/lib/urlState';
 import type { Asset, AssetStatus, AssetQuery } from '@/lib/types';
 
 // bulk-status hard caps ids at 50 per call; keep some headroom below that
@@ -23,12 +24,33 @@ const SORTS: Array<{ value: NonNullable<AssetQuery['sort']>; label: string }> = 
 ];
 
 export function App() {
-  const [q, setQ] = useState('');
-  const [status, setStatus] = useState<AssetStatus[]>([]);
-  const [sort, setSort] = useState<NonNullable<AssetQuery['sort']>>('updatedAt:desc');
+  const [q, setQ] = useState(() => readFilterStateFromUrl(window.location.search).q);
+  const [status, setStatus] = useState<AssetStatus[]>(
+    () => readFilterStateFromUrl(window.location.search).status,
+  );
+  const [sort, setSort] = useState<NonNullable<AssetQuery['sort']>>(
+    () => readFilterStateFromUrl(window.location.search).sort,
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Keep the URL in sync with filters (replaceState -- see urlState.ts for why).
+  useEffect(() => {
+    writeFilterStateToUrl({ q, status, sort });
+  }, [q, status, sort]);
+
+  // Restore filters when the user hits back/forward.
+  useEffect(() => {
+    function onPopState() {
+      const next = readFilterStateFromUrl(window.location.search);
+      setQ(next.q);
+      setStatus(next.status);
+      setSort(next.sort);
+    }
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Every keystroke sends a request. Nothing is debounced or cancelled.
   const { items, total, loading, error } = useAssets({ q, status, sort, limit: 24 });

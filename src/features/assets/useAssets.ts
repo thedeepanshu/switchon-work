@@ -27,7 +27,10 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 export function useAssets(query: Omit<AssetQuery, 'cursor'>) {
   const debouncedQ = useDebouncedValue(query.q ?? '', SEARCH_DEBOUNCE_MS);
-  const filters: Omit<AssetQuery, 'cursor'> = { ...query, q: debouncedQ };
+  // Whitespace-only input ("   ") is not a search -- trim before it enters
+  // the query key or the API call, or toSearchParams' truthy check treats
+  // it as a real query and sends `q=+++` to the server for nothing.
+  const filters: Omit<AssetQuery, 'cursor'> = { ...query, q: debouncedQ.trim() };
 
   const { data, isPending, isFetching, error } = useQuery({
     queryKey: [

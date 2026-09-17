@@ -30,8 +30,8 @@ Roughly, and how you split it.
 | # | Defect | Where | Fixed / left / out of scope |
 | --- | --- | --- | --- |
 | 1 | Bulk update sends >50 ids in one call | `App.tsx` | Fixed — chunked into <=50-id batches, bounded concurrency (3). Optimistic UI + per-id failure handling comes with Task 3. |
-| 2 | Every keystroke fires a request immediately — no debounce or cancellation | `useAssets.ts` | Fixed — q debounced 300ms; TanStack Query cancels the in-flight request via the AbortSignal passed to queryFn whenever the query key changes. |
-| 3 | No request-ordering guard — a slow response from an older query can overwrite a newer one's results | `useAssets.ts` | Fixed — everything the response depends on is in queryKey; TanStack Query only commits results for the current key, so there's no manual staleness bookkeeping to get wrong. |
+| 2 | Every keystroke fires a request immediately — no debounce or cancellation | `useAssets.ts` | Fixed — `q` debounced 300ms; TanStack Query cancels the in-flight request via the AbortSignal passed to `queryFn` whenever the query key changes. |
+| 3 | No request-ordering guard — a slow response from an older query can overwrite a newer one's results | `useAssets.ts` | Fixed — everything the response depends on is in `queryKey`; TanStack Query only commits results for the current key, so there's no manual staleness bookkeeping to get wrong. |
 | 4 | `nextCursor` is stored but never used — only the first 24 assets ever load | `useAssets.ts` | TODO (Task 2) |
 | 5 | Entire asset list rendered via `.map`, no virtualization | `AssetGrid.tsx` | TODO (Task 2) |
 | 6 | Saving in the detail panel doesn't update the grid — `onSaved` is a no-op | `App.tsx` | TODO |
@@ -43,7 +43,7 @@ Roughly, and how you split it.
 | 12 | Missing thumbnails aren't checked via `hasThumbnail` before requesting — renders a broken-image icon | `AssetGrid.tsx`, `AssetDetail.tsx` | TODO |
 | 13 | Error and empty states collapse into each other — a fetch failure shows "Nothing matches" underneath the error banner | `App.tsx` / `AssetGrid.tsx` | TODO |
 | 14 | No live region — bulk outcomes and errors are silent to a screen reader | `App.tsx` | TODO (Task 5) |
-| 15 | Filter/search state lives only in React state, not the URL — reload loses it | `App.tsx` | Fixed — q/status/sort sync to the URL via history.replaceState (no history entry per keystroke); popstate restores state on back/forward. kind/tag aren't in the UI yet, so not yet in the URL either. |
+| 15 | Filter/search state lives only in React state, not the URL — reload loses it | `App.tsx` | Fixed — `q`/`status`/`sort` sync to the URL via `history.replaceState` (no history entry per keystroke); `popstate` restores state on back/forward. `kind`/`tag` aren't in the UI yet, so not yet in the URL either. |
 
 ---
 
@@ -54,7 +54,25 @@ six of these is about right.
 
 **Data fetching and caching**
 
+TanStack Query, chosen over hand-rolling cache/cancellation/dedup logic.
+`useAssets` currently uses `useQuery` (single page) rather than
+`useInfiniteQuery` — pagination isn't wired up yet (Task 2), and building the
+infinite-query shape before the grid actually consumes multiple pages would
+be dead code. Search input is debounced 300ms via a small custom hook before
+it enters the query key; status/sort changes are not debounced since they're
+discrete selections, not continuous typing. `placeholderData` keeps the
+previous page's rows visible during a refetch instead of flashing to empty —
+surfaced to the UI as a separate `isFetching` flag so "updating in the
+background" and "no data at all yet" read differently.
+
 **Stale response handling**
+
+Fixed structurally rather than with manual bookkeeping: every filter that
+affects the response (`q`, `status`, `kind`, `tag`, `sort`, etc.) is part of
+`queryKey`, and TanStack Query only ever commits the result belonging to the
+*current* key, cancelling the previous key's in-flight request via the
+`AbortSignal` passed into `queryFn`. There's no request-id counter or
+"is this still the latest request" check to get wrong.
 
 **Virtualization approach**
 
@@ -63,6 +81,16 @@ six of these is about right.
 **Retry and backoff policy**
 
 **State placement and URL sync**
+
+`q`, `status`, and `sort` live in `App`'s component state (source of truth for
+rendering) and are mirrored to the URL via `history.replaceState`, not
+`pushState` — filters change on every keystroke, and a history entry per
+keystroke would make the back button useless. A `popstate` listener re-reads
+the URL into state so back/forward still work. Considered a `useReducer` +
+`URLSearchParams`-as-source-of-truth approach instead (URL always
+authoritative, state derived from it) — rejected for now because it means
+re-parsing the URL on every render path; may revisit if `kind`/`tag` filters
+get added and the param surface grows enough to justify it.
 
 ---
 
@@ -119,3 +147,15 @@ the client that you would rather not have.
 ## Anything you would like us to look at
 
 Code you are proud of, or a decision you are unsure about and want to discuss.
+
+One thing to flag up front rather than let it look like a bug in the demo: on
+every initial load in `npm run dev`, you'll see two requests in the network
+tab for the same query, with the first cancelled. That's React 18
+`StrictMode` (`main.tsx`) intentionally double-mounting components in
+development to catch effects that don't clean up properly — the first
+mount's request gets a real `AbortController` from TanStack Query, StrictMode
+unmounts it immediately (aborting it), then mounts again for the request that
+actually completes. It's dev-only diagnostic behavior; `vite build` doesn't
+do it. Left `StrictMode` in deliberately rather than removing it to hide
+this, since the clean cancellation is evidence the cancellation wiring
+(Commit 4) works, not a symptom of it being broken.

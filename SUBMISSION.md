@@ -30,8 +30,8 @@ Roughly, and how you split it.
 | # | Defect | Where | Fixed / left / out of scope |
 | --- | --- | --- | --- |
 | 1 | Bulk update sends >50 ids in one call | `App.tsx` | Fixed — chunked into <=50-id batches, bounded concurrency (3). Optimistic UI + per-id failure handling comes with Task 3. |
-| 2 | Every keystroke fires a request immediately — no debounce or cancellation | `useAssets.ts` | TODO (Task 1) |
-| 3 | No request-ordering guard — a slow response from an older query can overwrite a newer one's results | `useAssets.ts` | TODO (Task 1) |
+| 2 | Every keystroke fires a request immediately — no debounce or cancellation | `useAssets.ts` | Fixed — q debounced 300ms; TanStack Query cancels the in-flight request via the AbortSignal passed to queryFn whenever the query key changes. |
+| 3 | No request-ordering guard — a slow response from an older query can overwrite a newer one's results | `useAssets.ts` | Fixed — everything the response depends on is in queryKey; TanStack Query only commits results for the current key, so there's no manual staleness bookkeeping to get wrong. |
 | 4 | `nextCursor` is stored but never used — only the first 24 assets ever load | `useAssets.ts` | TODO (Task 2) |
 | 5 | Entire asset list rendered via `.map`, no virtualization | `AssetGrid.tsx` | TODO (Task 2) |
 | 6 | Saving in the detail panel doesn't update the grid — `onSaved` is a no-op | `App.tsx` | TODO |

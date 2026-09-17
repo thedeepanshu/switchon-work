@@ -11,7 +11,7 @@ import type { Asset, AssetStatus, AssetQuery } from '@/lib/types';
 // bulk-status hard caps ids at 50 per call; keep some headroom below that
 // and bound how many chunks run at once so this doesn't itself trip the
 // 80-req/10s rate limit when a reviewer selects hundreds of assets.
-const BULK_CHUNK_SIZE = 5;
+const BULK_CHUNK_SIZE = 50;
 const BULK_CHUNK_CONCURRENCY = 3;
 
 const STATUSES: AssetStatus[] = ['draft', 'in_review', 'approved', 'archived'];

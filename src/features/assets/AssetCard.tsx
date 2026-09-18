@@ -1,22 +1,28 @@
 import { memo } from 'react';
-import { formatBytes, formatDate } from '@/lib/format';
+import { formatBytes, formatDate, statusLabel } from '@/lib/format';
 import { AssetThumbnail } from './AssetThumbnail';
-import { statusLabel } from '@/lib/format';
 import type { Asset } from '@/lib/types';
 
 interface Props {
   asset: Asset;
   selected: boolean;
   active: boolean;
-  onToggleSelect: (id: string) => void;
+  onToggleSelect: (id: string, shiftKey: boolean) => void;
   onOpen: (id: string) => void;
 }
 
 function AssetCardImpl({ asset, selected, active, onToggleSelect, onOpen }: Props) {
+  const isUpdateable = !asset.tags.includes('legal-hold');
+
   return (
     <div
       role="listitem"
-      className={'card' + (selected ? ' card--selected' : '') + (active ? ' card--active' : '')}
+      className={
+        'card' +
+        (selected ? ' card--selected' : '') +
+        (selected && !isUpdateable ? ' card--unupdateable' : '') +
+        (active ? ' card--active' : '')
+      }
       onClick={() => onOpen(asset.id)}
     >
       <AssetThumbnail asset={asset} className="card__thumb" />
@@ -31,21 +37,13 @@ function AssetCardImpl({ asset, selected, active, onToggleSelect, onOpen }: Prop
         type="checkbox"
         className="card__check"
         checked={selected}
-        onClick={(e) => e.stopPropagation()}
-        onChange={() => onToggleSelect(asset.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleSelect(asset.id, e.shiftKey);
+        }}
       />
     </div>
   );
 }
 
-/**
- * Memoized so toggling one card's selection (or opening/closing the detail
- * panel) doesn't re-render every other visible card -- only the card whose
- * own `selected`/`active` prop actually changed re-renders.
- *
- * This only works because `onToggleSelect`/`onOpen` are stable function
- * references from the parent (useCallback / a state setter). If either
- * were a new closure every render, the default shallow prop comparison
- * would see a "new" prop every time and this memo would do nothing.
- */
 export const AssetCard = memo(AssetCardImpl);

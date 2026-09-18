@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { getAsset, updateAsset } from '@/api/client';
+import { getAsset, ApiError } from '@/api/client';
 import { formatBytes, formatDate, formatDuration, statusLabel } from '@/lib/format';
 import { AssetThumbnail } from './AssetThumbnail';
+import { useUpdateAssetMutation } from './useUpdateAssetMutation';
 import type { Asset, AssetStatus } from '@/lib/types';
 
 const STATUSES: AssetStatus[] = ['draft', 'in_review', 'approved', 'archived'];
@@ -12,37 +13,50 @@ interface Props {
   onSaved: (asset: Asset) => void;
 }
 
-/**
- * Baseline detail panel. Loads on open, saves with no optimistic update,
- * surfaces failures as raw strings, and does nothing about focus.
- */
 export function AssetDetail({ id, onClose, onSaved }: Props) {
   const [asset, setAsset] = useState<Asset | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const updateAssetMutation = useUpdateAssetMutation();
 
   useEffect(() => {
     setAsset(null);
-    setError(null);
+    setLoadError(null);
+    setSaveNotice(null);
     getAsset(id)
       .then(setAsset)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Load failed'));
+      .catch((err: unknown) => setLoadError(err instanceof Error ? err.message : 'Load failed'));
   }, [id]);
 
   async function setStatus(status: AssetStatus) {
     if (!asset) return;
-    setSaving(true);
-    setError(null);
+    setSaveNotice(null);
     try {
-      const updated = await updateAsset(asset.id, asset.version, { status });
+      const updated = await updateAssetMutation.mutateAsync({
+        id: asset.id,
+        version: asset.version,
+        patch: { status },
+      });
       setAsset(updated);
       onSaved(updated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
-    } finally {
-      setSaving(false);
+      if (err instanceof ApiError && err.code === 'version_conflict') {
+        setSaveNotice(
+          'This asset changed elsewhere. Reloaded the latest version -- please reapply your change if it still applies.',
+        );
+        try {
+          const latest = await getAsset(asset.id);
+          setAsset(latest);
+        } catch {
+          // If even the refetch fails, the user still sees the notice above.
+        }
+      } else {
+        setSaveNotice(err instanceof Error ? err.message : 'Save failed');
+      }
     }
   }
+
+  const saving = updateAssetMutation.isPending;
 
   return (
     <aside className="panel">
@@ -51,8 +65,9 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
         <button onClick={onClose}>Close</button>
       </div>
 
-      {error && <p className="error">{error}</p>}
-      {!asset && !error && <p className="muted">Loading…</p>}
+      {loadError && <p className="error">{loadError}</p>}
+      {saveNotice && <p className="notice">{saveNotice}</p>}
+      {!asset && !loadError && <p className="muted">Loading…</p>}
 
       {asset && (
         <div className="panel__body">

@@ -1,19 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
-import { bulkSetStatus } from '@/api/client';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AssetDetail } from '@/features/assets/AssetDetail';
 import { AssetGrid } from '@/features/assets/AssetGrid';
 import { useAssets } from '@/features/assets/useAssets';
-import { chunk } from '@/lib/chunk';
-import { mapWithConcurrency } from '@/lib/concurrency';
+import { useBulkStatusMutation } from '@/features/assets/useBulkStatusMutation';
 import { statusLabel } from '@/lib/format';
 import { readFilterStateFromUrl, writeFilterStateToUrl } from '@/lib/urlState';
 import type { Asset, AssetStatus, AssetQuery } from '@/lib/types';
-
-// bulk-status hard caps ids at 50 per call; keep some headroom below that
-// and bound how many chunks run at once so this doesn't itself trip the
-// 80-req/10s rate limit when a reviewer selects hundreds of assets.
-const BULK_CHUNK_SIZE = 50;
-const BULK_CHUNK_CONCURRENCY = 3;
 
 const STATUSES: AssetStatus[] = ['draft', 'in_review', 'approved', 'archived'];
 const SORTS: Array<{ value: NonNullable<AssetQuery['sort']>; label: string }> = [
@@ -35,12 +27,10 @@ export function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Keep the URL in sync with filters (replaceState -- see urlState.ts for why).
   useEffect(() => {
     writeFilterStateToUrl({ q, status, sort });
   }, [q, status, sort]);
 
-  // Restore filters when the user hits back/forward.
   useEffect(() => {
     function onPopState() {
       const next = readFilterStateFromUrl(window.location.search);
@@ -52,18 +42,38 @@ export function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // the useAssets call — drop limit, add the new pagination fields:
-  const { items, total, loading, hasNextPage, isFetchingNextPage, fetchNextPage, error } =
+  const { items, total, loading, isFetching, hasNextPage, isFetchingNextPage, fetchNextPage, error } =
     useAssets({ q, status, sort });
 
-  // replace the plain toggleSelect function with:
-  const toggleSelect = useCallback((id: string) => {
+  const bulkStatusMutation = useBulkStatusMutation();
+
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const lastClickedIdRef = useRef<string | null>(null);
+
+  const toggleSelect = useCallback((id: string, shiftKey: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
+      if (shiftKey && lastClickedIdRef.current) {
+        const currentItems = itemsRef.current;
+        const fromIndex = currentItems.findIndex((a) => a.id === lastClickedIdRef.current);
+        const toIndex = currentItems.findIndex((a) => a.id === id);
+        if (fromIndex !== -1 && toIndex !== -1) {
+          const [start, end] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex];
+          for (let i = start; i <= end; i += 1) next.add(currentItems[i]!.id);
+          lastClickedIdRef.current = id;
+          return next;
+        }
+      }
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      lastClickedIdRef.current = id;
       return next;
     });
+  }, []);
+
+  const selectAllLoaded = useCallback(() => {
+    setSelectedIds(new Set(itemsRef.current.map((a) => a.id)));
   }, []);
 
   async function applyBulkStatus(next: AssetStatus) {
@@ -71,28 +81,31 @@ export function App() {
     if (ids.length === 0) return;
     setNotice(null);
     try {
-      // Split into <=50-id chunks (the API's hard cap) and run a handful
-      // concurrently rather than one request per chunk in serial.
-      //
-      // NOTE: this only fixes the "fails outright above 50" defect. It does
-      // not yet do optimistic updates, per-id failure reporting, or retrying
-      // the ~7% random `conflict` failures separately from the deterministic
-      // `legal_hold` ones -- that full treatment lands in Task 3.
-      const chunks = chunk(ids, BULK_CHUNK_SIZE);
-      const chunkResults = await mapWithConcurrency(chunks, BULK_CHUNK_CONCURRENCY, (idsChunk) =>
-        bulkSetStatus(idsChunk, next),
-      );
-      const applied = chunkResults.reduce((sum, r) => sum + r.applied, 0);
-      const failed = chunkResults.reduce((sum, r) => sum + r.failed, 0);
-      setNotice(`${applied} updated, ${failed} failed.`);
-      setSelectedIds(new Set());
+      const outcome = await bulkStatusMutation.mutateAsync({ ids, status: next });
+      const parts = [`${outcome.applied} updated`];
+      if (outcome.legalHoldFailed.length) {
+        parts.push(`${outcome.legalHoldFailed.length} on legal hold (can't be changed)`);
+      }
+      if (outcome.conflictFailed.length) {
+        parts.push(`${outcome.conflictFailed.length} still conflicting after retries -- try again`);
+      }
+      if (outcome.notFound.length) {
+        parts.push(`${outcome.notFound.length} no longer exist`);
+      }
+      setNotice(parts.join(', ') + '.');
+      const failedIds = new Set([
+        ...outcome.legalHoldFailed,
+        ...outcome.conflictFailed,
+        ...outcome.notFound,
+      ]);
+      setSelectedIds(failedIds);
     } catch (err) {
       setNotice(err instanceof Error ? err.message : 'Bulk update failed');
     }
   }
 
   function handleSaved(_asset: Asset) {
-    // The list is not told that anything changed, so it shows stale rows.
+    setNotice('Saved.');
   }
 
   return (
@@ -131,15 +144,22 @@ export function App() {
           </label>
         ))}
         <span className="muted">
-          {loading ? 'Loading…' : `${items.length} of ${total.toLocaleString()} shown`}
+          {loading
+            ? 'Loading…'
+            : `${items.length} of ${total.toLocaleString()} shown${isFetching ? ' — updating…' : ''}`}
         </span>
+        {items.length > 0 && (
+          <button type="button" onClick={selectAllLoaded}>
+            Select all loaded ({items.length})
+          </button>
+        )}
       </div>
 
       {selectedIds.size > 0 && (
         <div className="bulkbar">
           <span>{selectedIds.size} selected</span>
           {STATUSES.map((s) => (
-            <button key={s} onClick={() => applyBulkStatus(s)}>
+            <button key={s} disabled={bulkStatusMutation.isPending} onClick={() => applyBulkStatus(s)}>
               Set {statusLabel(s).toLowerCase()}
             </button>
           ))}
@@ -151,7 +171,6 @@ export function App() {
       {error && <p className="error">{error}</p>}
 
       <main className="content">
-        {/* the <AssetGrid> call — add three new props: */}
         <AssetGrid
           assets={items}
           selectedIds={selectedIds}

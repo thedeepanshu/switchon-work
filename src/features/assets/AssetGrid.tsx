@@ -1,9 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { formatBytes, formatDate } from '@/lib/format';
-import { AssetThumbnail } from './AssetThumbnail';
-import { statusLabel } from '@/lib/format';
 import type { Asset } from '@/lib/types';
+import { AssetCard } from './AssetCard';
 
 interface Props {
   assets: Asset[];
@@ -160,33 +158,16 @@ export function AssetGrid({
                 transform: `translateY(${virtualRow.start + TOP_INSET}px)`,
               }}
             >
+              {/* inside the row map, replace the inline card div with: */}
               {rowAssets.map((asset) => (
-                <div
+                <AssetCard
                   key={asset.id}
-                  role="listitem"
-                  className={
-                    'card' +
-                    (selectedIds.has(asset.id) ? ' card--selected' : '') +
-                    (activeId === asset.id ? ' card--active' : '')
-                  }
-                  onClick={() => onOpen(asset.id)}
-                >
-                  <AssetThumbnail asset={asset} className="card__thumb" />
-                  <div className="card__body">
-                    <p className="card__name">{asset.name}</p>
-                    <p className="muted">
-                      {asset.kind} · {formatBytes(asset.sizeBytes)} · {formatDate(asset.updatedAt)}
-                    </p>
-                    <span className={`pill pill--${asset.status}`}>{statusLabel(asset.status)}</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    className="card__check"
-                    checked={selectedIds.has(asset.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={() => onToggleSelect(asset.id)}
-                  />
-                </div>
+                  asset={asset}
+                  selected={selectedIds.has(asset.id)}
+                  active={activeId === asset.id}
+                  onToggleSelect={onToggleSelect}
+                  onOpen={onOpen}
+                />
               ))}
             </div>
           );

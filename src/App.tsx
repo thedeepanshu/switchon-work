@@ -52,9 +52,9 @@ export function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // Search input is debounced and in-flight requests are cancelled when the
-  // filters change; the query key keeps each result tied to its filters.
-  const { items, total, loading, error } = useAssets({ q, status, sort, limit: 24 });
+  // the useAssets call — drop limit, add the new pagination fields:
+  const { items, total, loading, hasNextPage, isFetchingNextPage, fetchNextPage, error } =
+    useAssets({ q, status, sort });
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -150,12 +150,16 @@ export function App() {
       {error && <p className="error">{error}</p>}
 
       <main className="content">
+        {/* the <AssetGrid> call — add three new props: */}
         <AssetGrid
           assets={items}
           selectedIds={selectedIds}
           activeId={activeId}
           onToggleSelect={toggleSelect}
           onOpen={setActiveId}
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          onLoadMore={fetchNextPage}
         />
         {activeId && (
           <AssetDetail id={activeId} onClose={() => setActiveId(null)} onSaved={handleSaved} />

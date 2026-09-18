@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { getAsset, thumbnailUrl, updateAsset } from '@/api/client';
+import { getAsset, updateAsset } from '@/api/client';
 import { formatBytes, formatDate, formatDuration, statusLabel } from '@/lib/format';
+import { AssetThumbnail } from './AssetThumbnail';
 import type { Asset, AssetStatus } from '@/lib/types';
 
 const STATUSES: AssetStatus[] = ['draft', 'in_review', 'approved', 'archived'];
@@ -55,7 +56,7 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
 
       {asset && (
         <div className="panel__body">
-          <img className="panel__thumb" src={thumbnailUrl(asset.id)} alt="" />
+          <AssetThumbnail asset={asset} className="panel__thumb" />
           <h3>{asset.name}</h3>
           <dl className="facts">
             <dt>Id</dt>

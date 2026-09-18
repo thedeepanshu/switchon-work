@@ -1,38 +1,34 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { listAssets } from '@/api/client';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import type { AssetQuery } from '@/lib/types';
 
 const SEARCH_DEBOUNCE_MS = 300;
+const PAGE_SIZE = 24;
 
 /**
- * First-page asset loader.
+ * Cursor-paginated asset loader.
  *
- * Fixes, vs. the old hand-rolled version:
- *   - `q` is debounced, so typing no longer fires a request per keystroke
- *   - queryFn receives TanStack Query's AbortSignal, so changing filters
- *     mid-flight cancels the now-irrelevant in-flight request instead of
- *     leaving it to land later
- *   - the race is fixed structurally: everything the response depends on
- *     is in `queryKey`, and TanStack Query only ever commits the result for
- *     the *current* key -- there's no manual "is this response still
- *     relevant" bookkeeping to get wrong
- *   - identical concurrent requests (e.g. two components asking for the
- *     same filters) are deduped automatically by the query cache
- *
- * Does NOT yet do pagination -- this always fetches page one. Task 2
- * replaces this with useInfiniteQuery once the grid actually consumes
- * multiple pages; building that now would just be dead code until then.
+ * `cursor` is deliberately NOT part of the query key (see API.md: cursors
+ * are bound to the exact query that produced them). Instead it's the page
+ * param -- so changing any filter produces a brand new queryKey and starts
+ * a fresh pageParam sequence from scratch, which is exactly the "drop the
+ * cursor whenever the query changes" rule the contract requires. There's no
+ * way to accidentally reuse a stale cursor against a different filter set.
  */
-
-export function useAssets(query: Omit<AssetQuery, 'cursor'>) {
+export function useAssets(query: Omit<AssetQuery, 'cursor' | 'limit'>) {
   const debouncedQ = useDebouncedValue(query.q ?? '', SEARCH_DEBOUNCE_MS);
-  // Whitespace-only input ("   ") is not a search -- trim before it enters
-  // the query key or the API call, or toSearchParams' truthy check treats
-  // it as a real query and sends `q=+++` to the server for nothing.
-  const filters: Omit<AssetQuery, 'cursor'> = { ...query, q: debouncedQ.trim() };
+  const filters: Omit<AssetQuery, 'cursor' | 'limit'> = { ...query, q: debouncedQ.trim() };
 
-  const { data, isPending, isFetching, error } = useQuery({
+  const {
+    data,
+    isPending,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    error,
+  } = useInfiniteQuery({
     queryKey: [
       'assets',
       {
@@ -43,25 +39,26 @@ export function useAssets(query: Omit<AssetQuery, 'cursor'>) {
         collectionId: filters.collectionId,
         owner: filters.owner,
         sort: filters.sort,
-        limit: filters.limit,
       },
     ],
-    queryFn: ({ signal }) => listAssets(filters, { signal }),
-    // Keep the previous page's rows on screen while the new filters load,
-    // instead of flashing to an empty grid on every change.
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam, signal }) =>
+      listAssets({ ...filters, cursor: pageParam, limit: PAGE_SIZE }, { signal }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    // Keep prior pages' rows on screen while new filters load.
     placeholderData: (previousData) => previousData,
   });
 
   return {
-    items: data?.items ?? [],
-    total: data?.total ?? 0,
-    nextCursor: data?.nextCursor ?? null,
-    // True only on the very first load with nothing cached yet.
+    items: data ? data.pages.flatMap((page) => page.items) : [],
+    // total is stable across pages of the same query -- API.md says it's
+    // "the count for the current filters," recomputed identically each page.
+    total: data?.pages[0]?.total ?? 0,
     loading: isPending,
-    // True whenever a fetch is in flight, including background refetches
-    // while placeholder data is still showing -- use this for a subtle
-    // "updating" indicator rather than blanking the screen.
     isFetching,
+    isFetchingNextPage,
+    hasNextPage: hasNextPage ?? false,
+    fetchNextPage,
     error: error instanceof Error ? error.message : null,
   };
 }

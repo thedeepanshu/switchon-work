@@ -25,7 +25,9 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
     setSaveNotice(null);
     getAsset(id)
       .then(setAsset)
-      .catch((err: unknown) => setLoadError(err instanceof Error ? err.message : 'Load failed'));
+      .catch((err: unknown) =>
+        setLoadError(err instanceof ApiError ? err.userMessage : err instanceof Error ? err.message : 'Load failed'),
+      );
   }, [id]);
 
   async function setStatus(status: AssetStatus) {
@@ -51,7 +53,7 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
           // If even the refetch fails, the user still sees the notice above.
         }
       } else {
-        setSaveNotice(err instanceof Error ? err.message : 'Save failed');
+        setSaveNotice(err instanceof ApiError ? err.userMessage : err instanceof Error ? err.message : 'Save failed');
       }
     }
   }

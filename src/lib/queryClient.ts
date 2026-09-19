@@ -1,6 +1,17 @@
 import { QueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/api/client';
 
+/**
+ * Offline detection is NOT hand-rolled here: TanStack Query's onlineManager
+ * listens to the browser's online/offline events out of the box. With the
+ * default networkMode ('online'), queries and mutations simply don't fire
+ * while offline -- they sit in a "paused" state instead of failing and
+ * burning retry attempts -- and automatically resume when the browser
+ * reports it's back online. There's nothing to configure for the
+ * mechanism itself; useOnlineStatus (src/lib/useOnlineStatus.ts) only exists to surface
+ * that state visibly in the UI (App.tsx's offline banner), since silently
+ * pausing with no indication would just look like the app hanging.
+ */
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -29,7 +40,23 @@ export const queryClient = new QueryClient({
         if (!(error instanceof ApiError)) return failureCount < 2;
         return error.isRetryable && failureCount < 3;
       },
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10_000),
+
+      // Two different policies depending on whether the server told us
+      // how long to wait:
+      //   - Retry-After present (503/429 both send it): treated as a
+      //     FLOOR, not a target -- we add a little jitter on top, never
+      //     below it, since the server said "at minimum this long."
+      //   - No Retry-After: exponential backoff with FULL jitter (random
+      //     between 0 and the cap) -- this is what actually prevents a
+      //     thundering herd when several requests fail at the same
+      //     moment, which a fixed exponential curve alone does not.
+      retryDelay: (attemptIndex, error) => {
+        if (error instanceof ApiError && error.retryAfterSeconds != null) {
+          return error.retryAfterSeconds * 1000 + Math.random() * 500;
+        }
+        const cap = Math.min(1000 * 2 ** attemptIndex, 10_000);
+        return Math.random() * cap;
+      },
     },
   },
 });

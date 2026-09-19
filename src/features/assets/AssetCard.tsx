@@ -37,10 +37,8 @@ function AssetCardImpl({ asset, selected, active, onToggleSelect, onOpen }: Prop
         type="checkbox"
         className="card__check"
         checked={selected}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleSelect(asset.id, e.shiftKey);
-        }}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => onToggleSelect(asset.id, (e.nativeEvent as MouseEvent).shiftKey)}
       />
     </div>
   );

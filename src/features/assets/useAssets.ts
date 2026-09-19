@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { listAssets } from '@/api/client';
+import { listAssets, ApiError } from '@/api/client';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import type { AssetQuery } from '@/lib/types';
 
@@ -59,6 +59,6 @@ export function useAssets(query: Omit<AssetQuery, 'cursor' | 'limit'>) {
     isFetchingNextPage,
     hasNextPage: hasNextPage ?? false,
     fetchNextPage,
-    error: error instanceof Error ? error.message : null,
+    error: error instanceof ApiError ? error.userMessage : error instanceof Error ? error.message : null,
   };
 }

@@ -1,13 +1,11 @@
 import type { Asset, AssetPage, AssetQuery, BulkResult } from '@/lib/types';
 
 /**
- * Baseline client. It works on a good network and falls apart on a bad one.
- *
- * Known gaps, all of which are yours to close:
- *   - no request cancellation (signal is now threaded through -- see below --
- *     but nothing passes one yet; that lands with the Task 1 fetch rewrite)
- *   - no retry, no backoff, no handling of Retry-After (Task 4)
- *   - no de-duplication of concurrent identical requests (Task 1)
+ * Baseline client, progressively fixed across commits:
+ *   - cancellation: signal threaded through (Commit 4)
+ *   - retry/backoff/Retry-After: queryClient.ts + this file's isRetryable
+ *     (Commit 4 basic version, Commit 8 the full policy)
+ *   - de-duplication: TanStack Query's cache (Commit 4)
  */
 
 export type ApiErrorCode =
@@ -25,6 +23,43 @@ export type ApiErrorCode =
   | 'rate_limited'
   | 'thumbnail_missing'
   | 'unknown';
+
+/**
+ * Maps a stable API error code to copy a user can actually act on, instead
+ * of a leaked server string like "500: write_failed" or a raw statusText.
+ * Used by ApiError.userMessage below, and reusable anywhere a bulk per-item
+ * failure code (not itself an ApiError) needs the same treatment.
+ */
+export function describeErrorCode(code: string, fallback: string): string {
+  switch (code) {
+    case 'upstream_unavailable':
+      return 'The server is temporarily unavailable. Retrying automatically…';
+    case 'rate_limited':
+      return "You're making requests a bit too quickly. Please wait a few seconds and try again.";
+    case 'write_failed':
+      return "That change didn't save. Please try again.";
+    case 'version_conflict':
+      return 'This asset was changed elsewhere. Refresh to see the latest version before editing.';
+    case 'invalid_name':
+      return 'Names must be at least 3 characters.';
+    case 'invalid_status':
+      return "That status isn't valid for this asset.";
+    case 'invalid_tags':
+      return 'One or more tags are invalid.';
+    case 'legal_hold':
+      return "This asset is on legal hold and can't be archived.";
+    case 'not_found':
+      return 'This asset no longer exists — it may have been deleted.';
+    case 'too_many_ids':
+      return 'Too many items in one request.';
+    case 'stale_cursor':
+      return 'The list changed while loading more. Refreshing…';
+    case 'bad_request':
+      return "That request wasn't valid.";
+    default:
+      return fallback || 'Something went wrong. Please try again.';
+  }
+}
 
 /**
  * Structured replacement for the old "flatten everything into a string"
@@ -71,6 +106,11 @@ export class ApiError extends Error {
     if (this.status === 503) return true;
     if (this.status === 500 && this.code === 'write_failed') return true;
     return false;
+  }
+
+  /** User-facing copy for this failure -- never render `.message` directly. */
+  get userMessage(): string {
+    return describeErrorCode(this.code, this.message);
   }
 }
 
@@ -130,7 +170,6 @@ export function getAssetsByIds(
   ids: string[],
   opts?: { signal?: AbortSignal },
 ): Promise<{ items: Asset[]; missing: string[] }> {
-  // Note: the endpoint rejects more than 25 ids per call.
   return request(`/api/assets/batch?ids=${ids.join(',')}`, { signal: opts?.signal });
 }
 
@@ -146,7 +185,6 @@ export function updateAsset(
 }
 
 export function bulkSetStatus(ids: string[], status: Asset['status']): Promise<BulkResult> {
-  // Note: the endpoint rejects more than 50 ids per call.
   return request<BulkResult>('/api/assets/bulk-status', {
     method: 'POST',
     body: JSON.stringify({ ids, status }),

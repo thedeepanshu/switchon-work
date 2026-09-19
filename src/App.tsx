@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ApiError } from '@/api/client';
 import { AssetDetail } from '@/features/assets/AssetDetail';
 import { AssetGrid } from '@/features/assets/AssetGrid';
 import { useAssets } from '@/features/assets/useAssets';
 import { useBulkStatusMutation } from '@/features/assets/useBulkStatusMutation';
 import { statusLabel } from '@/lib/format';
 import { readFilterStateFromUrl, writeFilterStateToUrl } from '@/lib/urlState';
+import { useOnlineStatus } from '@/lib/useOnlineStatus';
 import type { Asset, AssetStatus, AssetQuery } from '@/lib/types';
 
 const STATUSES: AssetStatus[] = ['draft', 'in_review', 'approved', 'archived'];
@@ -46,6 +48,7 @@ export function App() {
     useAssets({ q, status, sort });
 
   const bulkStatusMutation = useBulkStatusMutation();
+  const online = useOnlineStatus();
 
   const itemsRef = useRef(items);
   itemsRef.current = items;
@@ -100,7 +103,7 @@ export function App() {
       ]);
       setSelectedIds(failedIds);
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Bulk update failed');
+      setNotice(err instanceof ApiError ? err.userMessage : err instanceof Error ? err.message : 'Bulk update failed');
     }
   }
 
@@ -165,6 +168,12 @@ export function App() {
           ))}
           <button onClick={() => setSelectedIds(new Set())}>Clear selection</button>
         </div>
+      )}
+
+      {!online && (
+        <p className="offline-banner" role="status">
+          You're offline. Changes will resume automatically once you're back online.
+        </p>
       )}
 
       {notice && <p className="notice">{notice}</p>}

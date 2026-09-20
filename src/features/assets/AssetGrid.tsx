@@ -14,41 +14,34 @@ interface Props {
   onLoadMore: () => void;
 }
 
+const MIN_CARD_WIDTH = 220;
 const GRID_GAP = 12;
 const ROW_HORIZONTAL_PADDING = 16; // matches .grid-row's left+right padding
-const ESTIMATED_BODY_HEIGHT = 84; // name + meta + pill; corrected post-render by measureElement
+// Computed, not guessed, now that .card__name is 2-line-clamped and the
+// meta line is forced to one line (styles.css) -- every card has exactly
+// this body height, so this isn't really an "estimate" anymore:
+//   padding-top 8 + name (2 lines @ 14px*1.3 line-height) 36.4
+//   + name margin 2 + meta line (13px*1.3) 16.9 + pill margin-top 6
+//   + pill box (12px*1.3 + 2px vertical padding) 17.6 + padding-bottom 10
+//   = ~97, rounded up for sub-pixel/font-rendering safety margin
+const ESTIMATED_BODY_HEIGHT = 100;
 const TOP_INSET = 16;
 const BOTTOM_INSET = 16;
 const LOAD_MORE_THRESHOLD_ROWS = 3;
 
-// Explicit device-class breakpoints rather than a continuous "however many
-// 220px cards fit" auto-fit -- that approach gives an unpredictable column
-// count (and looks like "everything is full width" the moment the
-// container is narrower than 2x the min card width, which is exactly what
-// a split-pane layout with the detail panel open produces). Checked
+// Same formula the browser itself uses for
+// `grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))` -- worked
+// out in JS instead of left to CSS because the virtualizer needs to know
+// the column count up front to slice `assets` into rows; there's no way
+// to read "how many columns did auto-fill pick" back out of CSS. Checked
 // against the grid's own measured width (a container query, effectively),
-// not the viewport -- so columns respond correctly to the detail panel
-// opening/closing, not just window resizes. Ordered widest-first; the
-// first breakpoint the available width satisfies wins. Thresholds are
-// chosen so the resulting card width never drops much below ~200px:
-//   6 cols @ 1280px usable -> ~203px cards
-//   4 cols @  900px usable -> ~216px cards
-//   3 cols @  700px usable -> ~225px cards
-//   2 cols @  480px usable -> ~234px cards
-//   1 col  below that
-const COLUMN_BREAKPOINTS: Array<{ minWidth: number; columns: number }> = [
-  { minWidth: 1280, columns: 6 }, // desktop
-  { minWidth: 900, columns: 4 }, // laptop
-  { minWidth: 700, columns: 3 }, // tablet, landscape
-  { minWidth: 480, columns: 2 }, // tablet, portrait / large phone
-  { minWidth: 0, columns: 1 }, // mobile
-];
-
+// not the viewport, so it responds correctly to the detail panel opening
+// and closing, not just window resizes.
 function computeColumns(containerWidth: number): number {
   if (containerWidth <= 0) return 1;
   const usable = containerWidth - ROW_HORIZONTAL_PADDING * 2;
-  const match = COLUMN_BREAKPOINTS.find((bp) => usable >= bp.minWidth);
-  return match?.columns ?? 1;
+  const columns = Math.floor((usable + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP));
+  return Math.max(1, columns);
 }
 
 function estimateRowHeight(containerWidth: number, columns: number): number {
@@ -61,17 +54,17 @@ function estimateRowHeight(containerWidth: number, columns: number): number {
 /**
  * Virtualized, cursor-paginated grid.
  *
- * Renders only the rows near the viewport (via @tanstack/react-virtual)
- * instead of every asset at once, so DOM node count and memory stay flat
- * as more pages load in. Row height is estimated from the measured
- * container width (thumbnails are a fixed aspect ratio, so width
- * determines height) and then self-corrected per row via measureElement,
- * since asset names can wrap to a second line.
- *
- * Selection and the active/open id are NOT part of what determines which
- * rows exist or their order, so toggling a selection or opening the detail
- * panel doesn't reset scroll position -- the scroll container itself never
- * remounts.
+ * The scroll container (`.grid`, holding `scrollRef`) is ALWAYS the root
+ * element this component returns -- the empty state renders as a child
+ * INSIDE it, never as a different root. This matters more than it looks:
+ * the width-measuring effect below has an empty dependency array, so it
+ * only ever runs once, tied to this component's first commit. If the
+ * first render (assets.length === 0, before data arrives) returned a
+ * *different* root with no ref on it, the effect would fire once against
+ * a null ref, bail out, and never run again for this component's whole
+ * life -- containerWidth would stay stuck at 0 permanently (a single
+ * full-width column), only ever "fixed" by something that forces a fresh
+ * mount, like an HMR reload that happens to already have cached data.
  */
 export function AssetGrid({
   assets,
@@ -84,23 +77,19 @@ export function AssetGrid({
   onLoadMore,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(() => window.innerWidth);
+  const [containerWidth, setContainerWidth] = useState(0);
 
-  // useLayoutEffect, not useEffect: measures synchronously before the
-  // browser paints. The animation-frame read also covers flex layout settling
-  // after a hard refresh, when clientWidth can briefly still be zero.
+  // useLayoutEffect (not useEffect): measures synchronously before paint,
+  // against a ref that -- because of the always-mounted-root rule above --
+  // is guaranteed to already point at the real element on this first run.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const measure = () => setContainerWidth(el.getBoundingClientRect().width);
+    const measure = () => setContainerWidth(el.clientWidth);
     const observer = new ResizeObserver(measure);
     measure();
     observer.observe(el);
-    const frame = requestAnimationFrame(measure);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
+    return () => observer.disconnect();
   }, []);
 
   const columns = computeColumns(containerWidth);
@@ -114,6 +103,9 @@ export function AssetGrid({
     overscan: 4,
   });
 
+  // Column count changing means "row N" now holds a different set of
+  // assets than before, so any previously-measured row heights (from the
+  // old column count) are no longer valid -- force a re-measure.
   useEffect(() => {
     if (containerWidth > 0) rowVirtualizer.measure();
   }, [containerWidth, columns, rowVirtualizer]);
@@ -130,58 +122,55 @@ export function AssetGrid({
     }
   }, [lastVirtualRowIndex, rowCount, hasNextPage, isFetchingNextPage, onLoadMore]);
 
-  if (assets.length === 0) {
-    return (
-      <div className="empty">
-        <p>Nothing matches these filters.</p>
-        <p className="muted">Clear the search box or widen the status filter.</p>
-      </div>
-    );
-  }
-
   const totalSize = rowVirtualizer.getTotalSize();
 
   return (
     <div className="grid" ref={scrollRef} role="list" aria-label="Assets">
-      <div className="grid-sizer" style={{ height: totalSize + TOP_INSET + BOTTOM_INSET }}>
-        {virtualRows.map((virtualRow) => {
-          const startIndex = virtualRow.index * columns;
-          const rowAssets = assets.slice(startIndex, startIndex + columns);
-          return (
+      {assets.length === 0 ? (
+        <div className="empty">
+          <p>Nothing matches these filters.</p>
+          <p className="muted">Clear the search box or widen the status filter.</p>
+        </div>
+      ) : (
+        <div className="grid-sizer" style={{ height: totalSize + TOP_INSET + BOTTOM_INSET }}>
+          {virtualRows.map((virtualRow) => {
+            const startIndex = virtualRow.index * columns;
+            const rowAssets = assets.slice(startIndex, startIndex + columns);
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={rowVirtualizer.measureElement}
+                className="grid-row"
+                style={{
+                  gridTemplateColumns: `repeat(${columns}, 1fr)`,
+                  transform: `translateY(${virtualRow.start + TOP_INSET}px)`,
+                }}
+              >
+                {rowAssets.map((asset) => (
+                  <AssetCard
+                    key={asset.id}
+                    asset={asset}
+                    selected={selectedIds.has(asset.id)}
+                    active={activeId === asset.id}
+                    onToggleSelect={onToggleSelect}
+                    onOpen={onOpen}
+                  />
+                ))}
+              </div>
+            );
+          })}
+          {isFetchingNextPage && (
             <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              ref={rowVirtualizer.measureElement}
-              className="grid-row"
-              style={{
-                gridTemplateColumns: `repeat(${columns}, 1fr)`,
-                transform: `translateY(${virtualRow.start + TOP_INSET}px)`,
-              }}
+              className="grid-loading-more muted"
+              role="status"
+              style={{ transform: `translateY(${totalSize + TOP_INSET}px)` }}
             >
-              {/* inside the row map, replace the inline card div with: */}
-              {rowAssets.map((asset) => (
-                <AssetCard
-                  key={asset.id}
-                  asset={asset}
-                  selected={selectedIds.has(asset.id)}
-                  active={activeId === asset.id}
-                  onToggleSelect={onToggleSelect}
-                  onOpen={onOpen}
-                />
-              ))}
+              Loading more…
             </div>
-          );
-        })}
-        {isFetchingNextPage && (
-          <div
-            className="grid-loading-more muted"
-            role="status"
-            style={{ transform: `translateY(${totalSize + TOP_INSET}px)` }}
-          >
-            Loading more…
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

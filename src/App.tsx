@@ -223,6 +223,7 @@ export function App() {
           className="search"
           type="search"
           placeholder="Search assets by name or tag"
+          aria-label="Search assets by name or tag"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />

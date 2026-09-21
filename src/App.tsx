@@ -7,9 +7,15 @@ import { useBulkStatusMutation } from '@/features/assets/useBulkStatusMutation';
 import { statusLabel } from '@/lib/format';
 import { readFilterStateFromUrl, writeFilterStateToUrl } from '@/lib/urlState';
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
-import type { Asset, AssetStatus, AssetQuery } from '@/lib/types';
+import type { Asset, AssetKind, AssetStatus, AssetQuery } from '@/lib/types';
 
 const STATUSES: AssetStatus[] = ['draft', 'in_review', 'approved', 'archived'];
+const KINDS: AssetKind[] = ['image', 'video', 'document'];
+const KIND_LABELS: Record<AssetKind, string> = {
+  image: 'Images',
+  video: 'Videos',
+  document: 'Documents',
+};
 const SORTS: Array<{ value: NonNullable<AssetQuery['sort']>; label: string }> = [
   { value: 'updatedAt:desc', label: 'Recently updated' },
   { value: 'name:asc', label: 'Name A–Z' },
@@ -22,6 +28,9 @@ export function App() {
   const [status, setStatus] = useState<AssetStatus[]>(
     () => readFilterStateFromUrl(window.location.search).status,
   );
+  const [kind, setKind] = useState<AssetKind[]>(
+    () => readFilterStateFromUrl(window.location.search).kind,
+  );
   const [sort, setSort] = useState<NonNullable<AssetQuery['sort']>>(
     () => readFilterStateFromUrl(window.location.search).sort,
   );
@@ -29,16 +38,33 @@ export function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [resultAnnouncement, setResultAnnouncement] = useState('');
+  const typeMenuRef = useRef<HTMLDetailsElement>(null);
+  const sortMenuRef = useRef<HTMLDetailsElement>(null);
+
+  const selectedSortLabel = SORTS.find((option) => option.value === sort)?.label ?? 'Sort';
 
   useEffect(() => {
-    writeFilterStateToUrl({ q, status, sort });
-  }, [q, status, sort]);
+    function closeMenusOnOutsideClick(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!typeMenuRef.current?.contains(target)) typeMenuRef.current?.removeAttribute('open');
+      if (!sortMenuRef.current?.contains(target)) sortMenuRef.current?.removeAttribute('open');
+    }
+
+    document.addEventListener('pointerdown', closeMenusOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeMenusOnOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    writeFilterStateToUrl({ q, status, kind, sort });
+  }, [q, status, kind, sort]);
 
   useEffect(() => {
     function onPopState() {
       const next = readFilterStateFromUrl(window.location.search);
       setQ(next.q);
       setStatus(next.status);
+      setKind(next.kind);
       setSort(next.sort);
     }
     window.addEventListener('popstate', onPopState);
@@ -46,7 +72,12 @@ export function App() {
   }, []);
 
   const { items, total, loading, isFetching, hasNextPage, isFetchingNextPage, fetchNextPage, error } =
-    useAssets({ q, status, sort });
+    useAssets({
+      q,
+      status,
+      kind,
+      sort,
+    });
 
   useEffect(() => {
     if (!isFetching) {
@@ -136,17 +167,30 @@ export function App() {
         <input
           className="search"
           type="search"
-          placeholder="Search assets"
+          placeholder="Search assets by name or tag"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
-          {SORTS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <details className="filter-menu" ref={sortMenuRef}>
+          <summary>{selectedSortLabel}</summary>
+          <div className="filter-menu__options">
+            {SORTS.map((option) => (
+              <label key={option.value}>
+                <input
+                  type="radio"
+                  name="sort"
+                  value={option.value}
+                  checked={sort === option.value}
+                  onChange={() => {
+                    setSort(option.value);
+                    sortMenuRef.current?.removeAttribute('open');
+                  }}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </details>
       </header>
 
       <div className="filters">
@@ -164,6 +208,27 @@ export function App() {
             {statusLabel(s)}
           </label>
         ))}
+        <details className="filter-menu" ref={typeMenuRef}>
+          <summary>
+            Type{kind.length > 0 ? ` (${kind.length})` : ''}
+          </summary>
+          <div className="filter-menu__options">
+            {KINDS.map((value) => (
+              <label key={value}>
+                <input
+                  type="checkbox"
+                  checked={kind.includes(value)}
+                  onChange={(e) =>
+                    setKind((prev) =>
+                      e.target.checked ? [...prev, value] : prev.filter((item) => item !== value),
+                    )
+                  }
+                />
+                {KIND_LABELS[value]}
+              </label>
+            ))}
+          </div>
+        </details>
         <span className="muted">
           {loading
             ? 'Loading…'

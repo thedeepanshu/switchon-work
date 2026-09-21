@@ -105,6 +105,56 @@ button:disabled {
   font-size: 13px;
 }
 
+.filter-menu {
+  position: relative;
+  font-size: 13px;
+}
+
+.filter-menu summary {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: pointer;
+  list-style: none;
+}
+
+.filter-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.filter-menu summary::after {
+  content: '▾';
+  margin-left: 8px;
+  color: var(--ink-soft);
+}
+
+.filter-menu[open] summary {
+  border-color: var(--accent);
+}
+
+.filter-menu__options {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  min-width: 150px;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  box-shadow: 0 8px 20px rgb(27 29 33 / 12%);
+}
+
+.filter-menu__options label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+}
+
 .bulkbar {
   display: flex;
   gap: 8px;

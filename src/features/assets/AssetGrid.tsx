@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Asset } from '@/lib/types';
 import { AssetCard } from './AssetCard';
@@ -122,10 +122,128 @@ export function AssetGrid({
     }
   }, [lastVirtualRowIndex, rowCount, hasNextPage, isFetchingNextPage, onLoadMore]);
 
+  const assetsRef = useRef(assets);
+  assetsRef.current = assets;
+  const columnsRef = useRef(columns);
+  columnsRef.current = columns;
+  const rowVirtualizerRef = useRef(rowVirtualizer);
+  rowVirtualizerRef.current = rowVirtualizer;
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const focusedIdRef = useRef<string | null>(null);
+  const pendingFocusRef = useRef(false);
+
+  useEffect(() => {
+    focusedIdRef.current = assetsRef.current[focusedIndex]?.id ?? null;
+  }, [focusedIndex]);
+
+  useEffect(() => {
+    const id = focusedIdRef.current;
+    if (id !== null && !assets.some((a) => a.id === id)) {
+      const clamped = Math.min(focusedIndex, Math.max(assets.length - 1, 0));
+      setFocusedIndex(clamped);
+      if (assets.length === 0) {
+        scrollRef.current?.focus();
+      } else {
+        pendingFocusRef.current = true;
+      }
+    }
+  }, [assets]);
+
+  useEffect(() => {
+    if (!pendingFocusRef.current) return;
+    const id = assetsRef.current[focusedIndex]?.id;
+    if (!id) return;
+    const target = cardRefs.current.get(id);
+    if (!target) return;
+    target.focus();
+    pendingFocusRef.current = false;
+  });
+
+  const registerCardRef = useCallback((el: HTMLDivElement | null, id: string) => {
+    if (el) cardRefs.current.set(id, el);
+    else cardRefs.current.delete(id);
+  }, []);
+
+  const handleOpen = useCallback(
+    (id: string) => {
+      const index = assetsRef.current.findIndex((a) => a.id === id);
+      if (index !== -1) setFocusedIndex(index);
+      onOpen(id);
+    },
+    [onOpen],
+  );
+
+  const handleToggleSelect = useCallback(
+    (id: string, shiftKey: boolean) => {
+      const index = assetsRef.current.findIndex((a) => a.id === id);
+      if (index !== -1) setFocusedIndex(index);
+      onToggleSelect(id, shiftKey);
+    },
+    [onToggleSelect],
+  );
+
+  const moveFocus = useCallback(
+    (targetIndex: number, shiftKey: boolean) => {
+      const currentAssets = assetsRef.current;
+      if (targetIndex < 0 || targetIndex >= currentAssets.length) return;
+      pendingFocusRef.current = true;
+      setFocusedIndex(targetIndex);
+      if (shiftKey) onToggleSelect(currentAssets[targetIndex]!.id, true);
+      const targetRow = Math.floor(targetIndex / columnsRef.current);
+      rowVirtualizerRef.current.scrollToIndex(targetRow, { align: 'auto' });
+    },
+    [onToggleSelect],
+  );
+
+  const handleCardKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>, id: string) => {
+      const index = assetsRef.current.findIndex((a) => a.id === id);
+      if (index === -1) return;
+      switch (e.key) {
+        case 'ArrowRight':
+          e.preventDefault();
+          moveFocus(index + 1, e.shiftKey);
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          moveFocus(index - 1, e.shiftKey);
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          moveFocus(index + columnsRef.current, e.shiftKey);
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          moveFocus(index - columnsRef.current, e.shiftKey);
+          break;
+        case 'Enter':
+          e.preventDefault();
+          handleOpen(id);
+          break;
+        case ' ':
+          e.preventDefault();
+          handleToggleSelect(id, e.shiftKey);
+          break;
+        default:
+          break;
+      }
+    },
+    [moveFocus, handleOpen, handleToggleSelect],
+  );
+
   const totalSize = rowVirtualizer.getTotalSize();
 
   return (
-    <div className="grid" ref={scrollRef} role="list" aria-label="Assets">
+    <div
+      className="grid"
+      ref={scrollRef}
+      role="listbox"
+      aria-multiselectable="true"
+      aria-label="Assets"
+      tabIndex={-1}
+    >
       {assets.length === 0 ? (
         <div className="empty">
           <p>Nothing matches these filters.</p>
@@ -147,16 +265,22 @@ export function AssetGrid({
                   transform: `translateY(${virtualRow.start + TOP_INSET}px)`,
                 }}
               >
-                {rowAssets.map((asset) => (
-                  <AssetCard
-                    key={asset.id}
-                    asset={asset}
-                    selected={selectedIds.has(asset.id)}
-                    active={activeId === asset.id}
-                    onToggleSelect={onToggleSelect}
-                    onOpen={onOpen}
-                  />
-                ))}
+                {rowAssets.map((asset, colIndex) => {
+                  const flatIndex = startIndex + colIndex;
+                  return (
+                    <AssetCard
+                      key={asset.id}
+                      asset={asset}
+                      selected={selectedIds.has(asset.id)}
+                      active={activeId === asset.id}
+                      tabIndex={flatIndex === focusedIndex ? 0 : -1}
+                      onToggleSelect={handleToggleSelect}
+                      onOpen={handleOpen}
+                      onKeyDown={handleCardKeyDown}
+                      onCardRef={registerCardRef}
+                    />
+                  );
+                })}
               </div>
             );
           })}

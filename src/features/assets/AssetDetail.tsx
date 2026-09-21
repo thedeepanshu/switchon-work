@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getAsset, ApiError } from '@/api/client';
 import { formatBytes, formatDate, formatDuration, statusLabel } from '@/lib/format';
 import { AssetThumbnail } from './AssetThumbnail';
@@ -18,6 +18,7 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const updateAssetMutation = useUpdateAssetMutation();
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setAsset(null);
@@ -29,6 +30,18 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
         setLoadError(err instanceof ApiError ? err.userMessage : err instanceof Error ? err.message : 'Load failed'),
       );
   }, [id]);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, [id]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   async function setStatus(status: AssetStatus) {
     if (!asset) return;
@@ -61,14 +74,24 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
   const saving = updateAssetMutation.isPending;
 
   return (
-    <aside className="panel">
+    <aside className="panel" aria-label="Asset detail">
       <div className="panel__head">
         <h2>Asset detail</h2>
-        <button onClick={onClose}>Close</button>
+        <button ref={closeButtonRef} onClick={onClose}>
+          Close
+        </button>
       </div>
 
-      {loadError && <p className="error">{loadError}</p>}
-      {saveNotice && <p className="notice">{saveNotice}</p>}
+      {loadError && (
+        <p className="error" role="alert">
+          {loadError}
+        </p>
+      )}
+      {saveNotice && (
+        <p className="notice" role="status">
+          {saveNotice}
+        </p>
+      )}
       {!asset && !loadError && <p className="muted">Loading…</p>}
 
       {asset && (

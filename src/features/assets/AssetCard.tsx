@@ -7,16 +7,31 @@ interface Props {
   asset: Asset;
   selected: boolean;
   active: boolean;
+  tabIndex: number;
   onToggleSelect: (id: string, shiftKey: boolean) => void;
   onOpen: (id: string) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>, id: string) => void;
+  onCardRef: (el: HTMLDivElement | null, id: string) => void;
 }
 
-function AssetCardImpl({ asset, selected, active, onToggleSelect, onOpen }: Props) {
+function AssetCardImpl({
+  asset,
+  selected,
+  active,
+  tabIndex,
+  onToggleSelect,
+  onOpen,
+  onKeyDown,
+  onCardRef,
+}: Props) {
   const isUpdateable = !asset.tags.includes('legal-hold');
 
   return (
     <div
-      role="listitem"
+      ref={(el) => onCardRef(el, asset.id)}
+      role="option"
+      aria-selected={selected}
+      tabIndex={tabIndex}
       className={
         'card' +
         (selected ? ' card--selected' : '') +
@@ -24,6 +39,7 @@ function AssetCardImpl({ asset, selected, active, onToggleSelect, onOpen }: Prop
         (active ? ' card--active' : '')
       }
       onClick={() => onOpen(asset.id)}
+      onKeyDown={(e) => onKeyDown(e, asset.id)}
     >
       <AssetThumbnail asset={asset} className="card__thumb" />
       <div className="card__body">
@@ -36,6 +52,7 @@ function AssetCardImpl({ asset, selected, active, onToggleSelect, onOpen }: Prop
       <input
         type="checkbox"
         className="card__check"
+        tabIndex={-1}
         checked={selected}
         onClick={(e) => e.stopPropagation()}
         onChange={(e) => onToggleSelect(asset.id, (e.nativeEvent as MouseEvent).shiftKey)}

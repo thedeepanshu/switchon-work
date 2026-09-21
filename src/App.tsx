@@ -28,6 +28,7 @@ export function App() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [resultAnnouncement, setResultAnnouncement] = useState('');
 
   useEffect(() => {
     writeFilterStateToUrl({ q, status, sort });
@@ -47,12 +48,19 @@ export function App() {
   const { items, total, loading, isFetching, hasNextPage, isFetchingNextPage, fetchNextPage, error } =
     useAssets({ q, status, sort });
 
+  useEffect(() => {
+    if (!isFetching) {
+      setResultAnnouncement(`${items.length} of ${total.toLocaleString()} assets shown`);
+    }
+  }, [isFetching, items.length, total]);
+
   const bulkStatusMutation = useBulkStatusMutation();
   const online = useOnlineStatus();
 
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const lastClickedIdRef = useRef<string | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const toggleSelect = useCallback((id: string, shiftKey: boolean) => {
     setSelectedIds((prev) => {
@@ -77,6 +85,16 @@ export function App() {
 
   const selectAllLoaded = useCallback(() => {
     setSelectedIds(new Set(itemsRef.current.map((a) => a.id)));
+  }, []);
+
+  const openDetail = useCallback((id: string) => {
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    setActiveId(id);
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    setActiveId(null);
+    previousFocusRef.current?.focus();
   }, []);
 
   async function applyBulkStatus(next: AssetStatus) {
@@ -158,6 +176,10 @@ export function App() {
         )}
       </div>
 
+      <div className="sr-only" role="status" aria-live="polite">
+        {resultAnnouncement}
+      </div>
+
       {selectedIds.size > 0 && (
         <div className="bulkbar">
           <span>{selectedIds.size} selected</span>
@@ -176,8 +198,16 @@ export function App() {
         </p>
       )}
 
-      {notice && <p className="notice">{notice}</p>}
-      {error && <p className="error">{error}</p>}
+      {notice && (
+        <p className="notice" role="status">
+          {notice}
+        </p>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
       <main className="content">
         <AssetGrid
@@ -185,14 +215,12 @@ export function App() {
           selectedIds={selectedIds}
           activeId={activeId}
           onToggleSelect={toggleSelect}
-          onOpen={setActiveId}
+          onOpen={openDetail}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
           onLoadMore={fetchNextPage}
         />
-        {activeId && (
-          <AssetDetail id={activeId} onClose={() => setActiveId(null)} onSaved={handleSaved} />
-        )}
+        {activeId && <AssetDetail id={activeId} onClose={closeDetail} onSaved={handleSaved} />}
       </main>
     </div>
   );

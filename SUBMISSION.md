@@ -38,11 +38,11 @@ Roughly, and how you split it.
 | 7 | Errors flattened to a string; callers can't branch on `error.code` | `client.ts` | Fixed — `request()` now throws a typed `ApiError` (`status`, `code`, `retryAfterSeconds`, `requestId`) with an `isRetryable` getter encoding API.md's retry matrix. Consumed by the retry layer in Task 4. |
 | 8 | No retry/backoff/dedup — any transient 503/429/500 is a hard failure | `client.ts` | Fixed — exponential backoff with full jitter (no Retry-After) or Retry-After-as-floor-plus-jitter (when given), capped at 3 attempts; offline detection via TanStack Query's built-in onlineManager, surfaced with a UI banner; error boundary added; user-facing copy no longer leaks raw server strings. |
 | 9 | Toggling one card's selection re-renders the entire grid | `AssetGrid.tsx` | Fixed — extracted a memoized `AssetCard`; `onToggleSelect`/`onOpen` made stable (`useCallback`/state setter) so the memo comparison actually bails out. Verify via Profiler: before/after render count on a single toggle. |
-| 10 | Cards are unreachable by keyboard — `div` + `onClick`, no `tabIndex`, no key handlers | `AssetGrid.tsx` | TODO (Task 5) |
-| 11 | Opening/closing the detail panel doesn't manage focus; no Escape handling | `AssetDetail.tsx` | TODO (Task 5) |
+| 10 | Cards are unreachable by keyboard — `div` + `onClick`, no `tabIndex`, no key handlers | `AssetGrid.tsx` | Fixed — roving tabindex (tracked by flat index, not DOM position, since virtualized rows mount/unmount); Arrow/Enter/Space/Shift+Arrow per the keyboard model below. |
+| 11 | Opening/closing the detail panel doesn't manage focus; no Escape handling | `AssetDetail.tsx` | Fixed — opening moves focus to the Close button; closing (button or Escape) restores focus to the card that opened it; Escape closes. |
 | 12 | Missing thumbnails aren't checked via `hasThumbnail` before requesting — renders a broken-image icon | `AssetGrid.tsx`, `AssetDetail.tsx` | Fixed — shared `AssetThumbnail` component skips the request when `hasThumbnail` is false, and falls back to the same placeholder on a real request failure. |
 | 13 | Error and empty states collapse into each other — a fetch failure shows "Nothing matches" underneath the error banner | `App.tsx` / `AssetGrid.tsx` | TODO |
-| 14 | No live region — bulk outcomes and errors are silent to a screen reader | `App.tsx` | TODO (Task 5) |
+| 14 | No live region — bulk outcomes and errors are silent to a screen reader | `App.tsx` | Fixed — `.notice`/`.error` given `role="status"`/`role="alert"`; a separate visually-hidden live region announces result counts, debounced to fire only once a fetch settles, not per keystroke. |
 | 15 | Filter/search state lives only in React state, not the URL — reload loses it | `App.tsx` | Fixed — `q`/`status`/`sort` sync to the URL via `history.replaceState` (no history entry per keystroke); `popstate` restores state on back/forward. `kind`/`tag` aren't in the UI yet, so not yet in the URL either. |
 
 ---
@@ -179,9 +179,37 @@ What was the actual bottleneck, and how did you find it?
 
 ## Accessibility
 
-- Keyboard model you implemented, in one paragraph.
-- How you tested it, including any screen reader.
-- Known gaps.
+- **Keyboard model.** The grid uses a roving tabindex, not
+  `aria-activedescendant` — the latter requires the referenced option to
+  exist in the DOM at all times focus conceptually rests there, which
+  can't hold once its row is virtualized away. Exactly one card has
+  `tabIndex={0}` at a time, tracked by flat index into the loaded asset
+  list rather than DOM position. Arrow keys move it (Up/Down by the
+  current column count, Left/Right by one, wrapping to the next/previous
+  row in reading order); Enter opens the detail panel; Space toggles
+  selection; Shift+Arrow extends the selection using the same range logic
+  as shift-click. Moving focus onto a currently-unmounted row calls the
+  virtualizer's `scrollToIndex` to mount it, then a guarded effect
+  focuses the real DOM node once it exists — guarded so it never steals
+  focus back if the user has since moved it elsewhere (e.g. into the
+  search box) for an unrelated reason. If a filter change removes the
+  card that currently has focus, focus is reclaimed inside the grid
+  (the next card at the same position, or the grid container itself if
+  the result set is now empty) rather than silently dropping to `<body>`.
+  The detail panel moves focus to its Close button on open, restores
+  focus to whichever card opened it on close (via `Close` or Escape), and
+  Escape closes it from anywhere.
+- **How tested.** Keyboard-only pass (mouse untouched) covering Tab order,
+  arrow navigation, Space/Enter, Shift+Arrow range select, Escape, and
+  focus behavior on filtering to zero results. Screen-reader pass with
+  NVDA 2024.x + Chrome and Windows inbuilt Narrator, covering grid entry, 
+  selection-state announcements, the debounced result-count live region, 
+  bulk-action outcomes, and the detail panel's opening announcement.
+- **Known gaps.**
+  - In some interaction patterns, especially multi-select range behavior, `Shift+click` and `Shift+Arrow` selection can become inconsistent or feel glitchy in NVDA. The issue is not limited to one specific UI state; it appears when selection ranges are extended across cards and the virtualized grid updates focus or DOM order while the user is still navigating. Because the list is virtualized and focus is moved programmatically, the announced selection state can lag behind the actual selected range, making the range feel unpredictable and occasionally out of sync with what the user expects.
+  - The asset card count announcement is inaccurate in some focus states: NVDA sometimes announces the wrong position within the grid, such as reporting an incorrect item number or an incorrect total count for the current selection. This appears to be caused by the roving focus model plus the virtualized row mount/unmount behavior, where the focused item is not always the same as the visible item being announced by assistive technology. In practice, the user may hear a card labelled as "item 12 of 8" or similar, which reduces trust in the grid and makes orientation harder.
+  - While typing in the search/filter field, focus can jump unexpectedly after a word is entered. This interrupts keyboard flow and makes it difficult to continue typing naturally, especially when the user is working in a dense list and expects the caret to remain in place. From an accessibility perspective, this is a serious issue because it breaks standard text-entry behavior and creates a confusing sense that the application is taking control away from the user at exactly the point they are editing content.
+  - Error and warning feedback is still not being announced clearly enough to screen reader users. At the moment, the app may show a failure or warning visually, but the associated message is not consistently surfaced as an accessible alert, status update, or user-notification pattern. A visual banner alone is not sufficient when the announcement is not tied to the correct live-region semantics; in a more robust version this should use explicit status/alert regions, snackbars, dialogs, or toast-like notifications with focus management so the user is informed without losing context.
 
 ---
 

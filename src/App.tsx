@@ -39,6 +39,8 @@ export function App() {
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeDetails, setNoticeDetails] = useState<Array<{ label: string; items: string[] }>>([]);
+  const [showNoticeDetails, setShowNoticeDetails] = useState(false);
   const [retryableBulkIds, setRetryableBulkIds] = useState<string[]>([]);
   const [lastBulkStatus, setLastBulkStatus] = useState<AssetStatus | null>(null);
   const [resultAnnouncement, setResultAnnouncement] = useState('');
@@ -132,33 +134,64 @@ export function App() {
     previousFocusRef.current?.focus();
   }, []);
 
+  const formatNames = useCallback(
+    (ids: string[]) =>
+      ids.map((id) => items.find((asset) => asset.id === id)?.name ?? id),
+    [items],
+  );
+
   async function applyBulkStatus(next: AssetStatus, idsOverride?: string[]) {
     const ids = idsOverride ?? [...selectedIds];
     if (ids.length === 0) return;
     setNotice(null);
+    setNoticeDetails([]);
+    setShowNoticeDetails(false);
     setRetryableBulkIds([]);
     setLastBulkStatus(next);
     setUpdatingIds(new Set(ids));
 
     try {
       const outcome = await bulkStatusMutation.mutateAsync({ ids, status: next });
-      const parts = [`${outcome.applied} updated`];
+      const summary: string[] = [];
+      const detailEntries: Array<{ label: string; items: string[] }> = [];
+
+      if (outcome.applied > 0) {
+        summary.push(`${outcome.applied} updated`);
+      }
       if (outcome.legalHoldFailed.length) {
-        parts.push(`${outcome.legalHoldFailed.length} on legal hold (can't be changed)`);
+        summary.push(`${outcome.legalHoldFailed.length} could not be updated because they are on legal hold`);
+        detailEntries.push({
+          label: 'Legal hold',
+          items: formatNames(outcome.legalHoldFailed),
+        });
       }
       if (outcome.conflictFailed.length) {
-        parts.push(`${outcome.conflictFailed.length} still conflicting after retries -- try again`);
+        summary.push(`${outcome.conflictFailed.length} need another try because they are still conflicting`);
+        detailEntries.push({
+          label: 'Conflicts',
+          items: formatNames(outcome.conflictFailed),
+        });
       }
       if (outcome.notFound.length) {
-        parts.push(`${outcome.notFound.length} no longer exist`);
+        summary.push(`${outcome.notFound.length} are no longer available`);
+        detailEntries.push({
+          label: 'Missing',
+          items: formatNames(outcome.notFound),
+        });
       }
       if (outcome.requestFailed.length) {
-        parts.push(`request failed for ${outcome.requestFailed.join(', ')}`);
+        summary.push(`${outcome.requestFailed.length} failed to update because of a request error`);
+        detailEntries.push({
+          label: 'Request errors',
+          items: formatNames(outcome.requestFailed),
+        });
       }
-      if (outcome.retryableFailed.length) {
-        parts.push(`retryable failures: ${outcome.retryableFailed.join(', ')}`);
-      }
-      setNotice(parts.join(', ') + '.');
+
+      const finalSummary = summary.length > 0 ? `${summary.join('. ')}.` : 'Bulk update finished.';
+      setNotice(finalSummary);
+      setNoticeDetails(detailEntries);
+      setShowNoticeDetails(false);
+
       const failedIds = new Set([
         ...outcome.legalHoldFailed,
         ...outcome.conflictFailed,
@@ -166,9 +199,11 @@ export function App() {
         ...outcome.requestFailed,
       ]);
       setSelectedIds(failedIds);
-      setRetryableBulkIds(outcome.retryableFailed);
+      setRetryableBulkIds([...new Set(outcome.retryableFailed)]);
     } catch (err) {
       setNotice(err instanceof ApiError ? err.userMessage : err instanceof Error ? err.message : 'Bulk update failed');
+      setNoticeDetails([]);
+      setShowNoticeDetails(false);
     } finally {
       setUpdatingIds(new Set());
     }
@@ -176,6 +211,8 @@ export function App() {
 
   function handleSaved(_asset: Asset) {
     setNotice('Saved.');
+    setNoticeDetails([]);
+    setShowNoticeDetails(false);
   }
 
   return (
@@ -292,9 +329,44 @@ export function App() {
       )}
 
       {notice && (
-        <p className="notice" role="status">
-          {notice}
-        </p>
+        <div className="notice" role="status">
+          <div className="notice__content">
+            <p className="notice__summary">{notice}</p>
+            {noticeDetails.length > 0 && (
+              <details
+                className="notice__details"
+                open={showNoticeDetails}
+                onToggle={(event) => setShowNoticeDetails(event.currentTarget.open)}
+              >
+                <summary>{showNoticeDetails ? 'Hide details' : 'Show details'}</summary>
+                <div className="notice__detail-list">
+                  {noticeDetails.map((group) => (
+                    <div key={group.label} className="notice__detail-group">
+                      <strong>{group.label}</strong>
+                      <ol>
+                        {group.items.map((item) => (
+                          <li key={`${group.label}-${item}`}>{item}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+          <button
+            type="button"
+            className="notice__close"
+            aria-label="Close notice"
+            onClick={() => {
+              setNotice(null);
+              setNoticeDetails([]);
+              setShowNoticeDetails(false);
+            }}
+          >
+            ×
+          </button>
+        </div>
       )}
       {error && items.length > 0 && (
         <p className="error" role="alert">

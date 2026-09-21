@@ -9,6 +9,8 @@ interface Props {
   activeId: string | null;
   onToggleSelect: (id: string, shiftKey: boolean) => void;
   onOpen: (id: string) => void;
+  loading: boolean;
+  error: string | null;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   onLoadMore: () => void;
@@ -72,6 +74,8 @@ export function AssetGrid({
   activeId,
   onToggleSelect,
   onOpen,
+  loading,
+  error,
   hasNextPage,
   isFetchingNextPage,
   onLoadMore,
@@ -244,7 +248,17 @@ export function AssetGrid({
       aria-label="Assets"
       tabIndex={-1}
     >
-      {assets.length === 0 ? (
+      {loading && assets.length === 0 ? (
+        <div className="grid-state" role="status">
+          <p>Loading assets…</p>
+          <p className="muted">Please wait while the library loads.</p>
+        </div>
+      ) : error && assets.length === 0 ? (
+        <div className="grid-state grid-state--error" role="alert">
+          <p>We couldn’t load these assets.</p>
+          <p className="muted">Check your connection and try again.</p>
+        </div>
+      ) : assets.length === 0 ? (
         <div className="empty">
           <p>Nothing matches these filters.</p>
           <p className="muted">Clear the search box or widen the status filter.</p>

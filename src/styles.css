@@ -320,6 +320,30 @@ button:disabled {
   flex: 1;
 }
 
+.grid-state {
+  display: flex;
+  flex: 1;
+  min-height: 240px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 16px;
+  text-align: center;
+}
+
+.grid-state p {
+  margin: 0;
+}
+
+.grid-state--error {
+  color: var(--danger);
+}
+
+.grid-state--error .muted {
+  color: var(--ink-soft);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

@@ -203,7 +203,7 @@ export function App() {
           {notice}
         </p>
       )}
-      {error && (
+      {error && items.length > 0 && (
         <p className="error" role="alert">
           {error}
         </p>
@@ -216,6 +216,8 @@ export function App() {
           activeId={activeId}
           onToggleSelect={toggleSelect}
           onOpen={openDetail}
+          loading={loading}
+          error={error}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
           onLoadMore={fetchNextPage}

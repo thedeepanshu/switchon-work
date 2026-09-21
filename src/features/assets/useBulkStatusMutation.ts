@@ -33,6 +33,8 @@ export interface BulkStatusOutcome {
   legalHoldFailed: string[];
   conflictFailed: string[]; // still failing after every retry
   notFound: string[];
+  requestFailed: string[];
+  retryableFailed: string[];
 }
 
 /**
@@ -75,14 +77,23 @@ export function useBulkStatusMutation() {
       let applied = 0;
       const legalHoldFailed = new Set<string>();
       const notFound = new Set<string>();
+      const requestFailed = new Set<string>();
       let conflictFailed: string[] = [];
 
       for (let attempt = 0; attempt <= MAX_CONFLICT_RETRIES && pending.length > 0; attempt += 1) {
         const chunks = chunk(pending, BULK_CHUNK_SIZE);
-        const chunkResults = await mapWithConcurrency(chunks, BULK_CHUNK_CONCURRENCY, (idsChunk) =>
-          bulkSetStatus(idsChunk, status),
-        );
-        const results = chunkResults.flatMap((r) => r.results);
+        const chunkResults = await mapWithConcurrency(chunks, BULK_CHUNK_CONCURRENCY, async (idsChunk) => {
+          try {
+            return { ids: idsChunk, result: await bulkSetStatus(idsChunk, status) };
+          } catch {
+            return { ids: idsChunk, result: null };
+          }
+        });
+        const results = chunkResults.flatMap((chunkResult) => {
+          if (chunkResult.result) return chunkResult.result.results;
+          chunkResult.ids.forEach((id) => requestFailed.add(id));
+          return [];
+        });
 
         const retryable: string[] = [];
         const succeeded = new Map<string, Asset>();
@@ -91,8 +102,10 @@ export function useBulkStatusMutation() {
           if (result.ok) {
             applied += 1;
             succeeded.set(result.id, result.asset);
+            requestFailed.delete(result.id);
             return;
           }
+          requestFailed.delete(result.id);
           if (result.code === 'legal_hold') {
             legalHoldFailed.add(result.id);
           } else if (result.code === 'not_found') {
@@ -109,7 +122,8 @@ export function useBulkStatusMutation() {
       }
 
       const rollback = new Map<string, Asset>();
-      [...legalHoldFailed, ...notFound, ...conflictFailed].forEach((id) => {
+      const failedIds = [...legalHoldFailed, ...notFound, ...conflictFailed, ...requestFailed];
+      failedIds.forEach((id) => {
         const original = originals.get(id);
         if (original) rollback.set(id, original);
       });
@@ -120,6 +134,8 @@ export function useBulkStatusMutation() {
         legalHoldFailed: [...legalHoldFailed],
         conflictFailed,
         notFound: [...notFound],
+        requestFailed: [...requestFailed],
+        retryableFailed: [...new Set([...conflictFailed, ...requestFailed])],
       };
     },
   });

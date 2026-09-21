@@ -223,7 +223,7 @@ button:disabled {
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
-  color: var(--ink-soft);
+  color: var(--danger);
 }
 
 .notice__detail-group strong {
@@ -394,6 +394,7 @@ button:disabled {
 }
 .panel__thumb {
   width: 100%;
+  aspect-ratio: 16 / 10;
   border-radius: 6px;
   margin-top: 12px;
   background: var(--bg-soft);
@@ -518,6 +519,82 @@ button:disabled {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .topbar h1 {
+    flex: 1 0 auto;
+  }
+
+  .topbar .filter-menu {
+    flex: 0 0 auto;
+  }
+
+  .search {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .filters {
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+
+  .filters .muted {
+    flex: 1 1 100%;
+    order: 3;
+  }
+
+  .filters > .filter-menu,
+  .filters > button {
+    order: 1;
+  }
+
+  .filters > .loading-spinner {
+    order: 4;
+  }
+
+  .bulkbar {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .topbar,
+  .filters,
+  .bulkbar {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .topbar {
+    gap: 8px;
+  }
+
+  .topbar .filter-menu summary {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .filters {
+    gap: 8px 12px;
+  }
+
+  .bulkbar > span {
+    flex: 1 1 100%;
+  }
+
+  .bulkbar button {
+    flex: 1 1 auto;
   }
 }
 

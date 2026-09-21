@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getAsset, ApiError } from '@/api/client';
 import { formatBytes, formatDate, formatDuration, statusLabel } from '@/lib/format';
 import { AssetThumbnail } from './AssetThumbnail';
@@ -10,26 +11,22 @@ const STATUSES: AssetStatus[] = ['draft', 'in_review', 'approved', 'archived'];
 
 interface Props {
   id: string;
+  updating: boolean;
   onClose: () => void;
   onSaved: (asset: Asset) => void;
 }
 
-export function AssetDetail({ id, onClose, onSaved }: Props) {
-  const [asset, setAsset] = useState<Asset | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+export function AssetDetail({ id, updating, onClose, onSaved }: Props) {
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const updateAssetMutation = useUpdateAssetMutation();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const { data: asset, isPending, error, refetch } = useQuery({
+    queryKey: ['asset', id],
+    queryFn: () => getAsset(id),
+  });
 
   useEffect(() => {
-    setAsset(null);
-    setLoadError(null);
     setSaveNotice(null);
-    getAsset(id)
-      .then(setAsset)
-      .catch((err: unknown) =>
-        setLoadError(err instanceof ApiError ? err.userMessage : err instanceof Error ? err.message : 'Load failed'),
-      );
   }, [id]);
 
   useEffect(() => {
@@ -45,7 +42,7 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
   }, [onClose]);
 
   async function setStatus(status: AssetStatus) {
-    if (!asset) return;
+    if (!asset || updating) return;
     setSaveNotice(null);
     try {
       const updated = await updateAssetMutation.mutateAsync({
@@ -53,7 +50,6 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
         version: asset.version,
         patch: { status },
       });
-      setAsset(updated);
       onSaved(updated);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'version_conflict') {
@@ -61,8 +57,7 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
           'This asset changed elsewhere. Reloaded the latest version -- please reapply your change if it still applies.',
         );
         try {
-          const latest = await getAsset(asset.id);
-          setAsset(latest);
+          await refetch();
         } catch {
           // If even the refetch fails, the user still sees the notice above.
         }
@@ -72,7 +67,7 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
     }
   }
 
-  const saving = updateAssetMutation.isPending;
+  const saving = updateAssetMutation.isPending || updating;
 
   return (
     <aside className="panel" aria-label="Asset detail">
@@ -83,9 +78,9 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
         </button>
       </div>
 
-      {loadError && (
+      {error && (
         <p className="error" role="alert">
-          {loadError}
+          {error instanceof ApiError ? error.userMessage : error instanceof Error ? error.message : 'Load failed'}
         </p>
       )}
       {saveNotice && (
@@ -93,7 +88,7 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
           {saveNotice}
         </p>
       )}
-      {!asset && !loadError && (
+      {!asset && isPending && (
         <div className="panel__loading" role="status">
           <LoadingSpinner size="md" label="Loading asset details" inline />
           <span className="muted">Loading asset…</span>
@@ -149,7 +144,7 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
                 disabled={saving || status === asset.status}
                 onClick={() => setStatus(status)}
               >
-                {saving && status !== asset.status ? (
+                {saving ? (
                   <LoadingSpinner size={14} label={`Saving ${statusLabel(status)} status`} inline />
                 ) : (
                   statusLabel(status)

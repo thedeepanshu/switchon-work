@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMutationState } from '@tanstack/react-query';
 import { ApiError } from '@/api/client';
 import { AssetDetail } from '@/features/assets/AssetDetail';
 import { AssetGrid } from '@/features/assets/AssetGrid';
@@ -92,6 +93,11 @@ export function App() {
   }, [isFetching, items.length, total]);
 
   const bulkStatusMutation = useBulkStatusMutation();
+  const pendingAssetUpdates = useMutationState<{ id: string }>({
+    filters: { mutationKey: ['asset-update'], status: 'pending' },
+    select: (mutation) => mutation.state.variables as { id: string },
+  });
+  const updatingAssetIds = new Set([...updatingIds, ...pendingAssetUpdates.map(({ id }) => id)]);
   const online = useOnlineStatus();
 
   const itemsRef = useRef(items);
@@ -379,7 +385,7 @@ export function App() {
         <AssetGrid
           assets={items}
           selectedIds={selectedIds}
-          updatingIds={updatingIds}
+          updatingIds={updatingAssetIds}
           activeId={activeId}
           onToggleSelect={toggleSelect}
           onOpen={openDetail}
@@ -389,7 +395,14 @@ export function App() {
           isFetchingNextPage={isFetchingNextPage}
           onLoadMore={fetchNextPage}
         />
-        {activeId && <AssetDetail id={activeId} onClose={closeDetail} onSaved={handleSaved} />}
+        {activeId && (
+          <AssetDetail
+            id={activeId}
+            updating={updatingAssetIds.has(activeId)}
+            onClose={closeDetail}
+            onSaved={handleSaved}
+          />
+        )}
       </main>
     </div>
   );

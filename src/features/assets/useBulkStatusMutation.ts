@@ -16,6 +16,7 @@ interface AssetsInfiniteData {
 /** Applies a set of per-id replacements across every cached assets-list query. */
 function mapAssetsInCache(queryClient: QueryClient, updates: Map<string, Asset>) {
   if (updates.size === 0) return;
+  updates.forEach((asset) => queryClient.setQueryData(['asset', asset.id], asset));
   queryClient.setQueriesData<AssetsInfiniteData>({ queryKey: ['assets'] }, (data) => {
     if (!data) return data;
     return {

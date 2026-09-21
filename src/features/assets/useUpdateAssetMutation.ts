@@ -8,6 +8,7 @@ interface AssetsInfiniteData {
 }
 
 function mapAssetInCache(queryClient: QueryClient, id: string, next: Asset) {
+  queryClient.setQueryData<Asset>(['asset', id], next);
   queryClient.setQueriesData<AssetsInfiniteData>({ queryKey: ['assets'] }, (data) => {
     if (!data) return data;
     return {
@@ -45,16 +46,17 @@ export function useUpdateAssetMutation() {
   const queryClient = useQueryClient();
 
   return useMutation<Asset, ApiError, UpdateAssetVars, { previous: Asset | undefined }>({
+    mutationKey: ['asset-update'],
     mutationFn: ({ id, version, patch }) => updateAsset(id, version, patch),
 
     onMutate: async ({ id, patch }) => {
       await queryClient.cancelQueries({ queryKey: ['assets'] });
 
-      let previous: Asset | undefined;
+      let previous = queryClient.getQueryData<Asset>(['asset', id]);
       queryClient.getQueriesData<AssetsInfiniteData>({ queryKey: ['assets'] }).forEach(([, data]) => {
         data?.pages.forEach((page) => {
           const found = page.items.find((asset) => asset.id === id);
-          if (found) previous = found;
+          if (!previous && found) previous = found;
         });
       });
 

@@ -32,10 +32,8 @@ export const queryClient = new QueryClient({
       // (503, 429, 500/write_failed) -- never 400/409/422, which the API
       // contract guarantees will fail the same way every time.
       //
-      // This is a basic exponential backoff, capped at 3 attempts. The
-      // fuller resilience policy -- honoring Retry-After precisely, adding
-      // jitter, detecting offline -- is Task 4; this is just "don't hammer
-      // a request that can never succeed."
+      // Retryable API errors get up to three retries. retryDelay below honors
+      // Retry-After as a floor and otherwise uses jittered exponential backoff.
       retry: (failureCount, error) => {
         if (!(error instanceof ApiError)) return failureCount < 2;
         return error.isRetryable && failureCount < 3;

@@ -40,18 +40,18 @@ export interface BulkStatusOutcome {
 
 /**
  * Bulk status update: optimistic, chunked (<=50/request, 3 concurrent),
- * with per-id failure handling that treats API.md's two failure codes
+ * with per-id failure handling that treats API.md's failure codes
  * differently rather than lumping them into one "failed" bucket:
  *
- *   - legal_hold: deterministic, will NEVER succeed for that asset.
- *     Never retried. Rolled back to its real prior status and reported
- *     by name so the user understands *why*, not just that it failed.
+ *   - legal_hold and not_found: deterministic terminal failures. Never
+ *     retried. Rolled back to the prior status and reported by name so the
+ *     user understands *why*, not just that the update failed.
  *   - conflict: random, ~7%, genuinely worth retrying. Retried up to
  *     MAX_CONFLICT_RETRIES times before giving up and rolling back.
  *
- * All ids get the optimistic status immediately; anything that ultimately
- * fails (either kind) is rolled back to the real value it had before the
- * mutation started -- no id is left showing a status it never actually got.
+ * All matching cached assets get the optimistic status immediately; anything
+ * that ultimately fails is rolled back to the real value it had before the
+ * mutation started. IDs absent from the cache are not updated optimistically.
  */
 export function useBulkStatusMutation() {
   const queryClient = useQueryClient();

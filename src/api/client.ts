@@ -1,11 +1,8 @@
 import type { Asset, AssetPage, AssetQuery, BulkResult } from '@/lib/types';
 
 /**
- * Baseline client, progressively fixed across commits:
- *   - cancellation: signal threaded through (Commit 4)
- *   - retry/backoff/Retry-After: queryClient.ts + this file's isRetryable
- *     (Commit 4 basic version, Commit 8 the full policy)
- *   - de-duplication: TanStack Query's cache (Commit 4)
+ * API client types and helpers for cancellation, structured errors, and
+ * retry classification. TanStack Query handles request de-duplication.
  */
 
 export type ApiErrorCode =
@@ -97,9 +94,9 @@ export class ApiError extends Error {
    *   - 500 write_failed         -> retry
    *   - 400 / 409 / 422          -> never retry
    *
-   * Bulk per-item codes (`legal_hold` vs `conflict`) live inside a 207
-   * response body, not here -- that distinction is handled separately in
-   * Task 3, since it's per-id, not per-request.
+  * Bulk per-item codes (`legal_hold` vs `conflict`) live inside a 207
+  * response body, not here. That distinction is handled by the bulk-status
+  * mutation because it is per-id rather than per-request.
    */
   get isRetryable(): boolean {
     if (this.status === 429) return true;

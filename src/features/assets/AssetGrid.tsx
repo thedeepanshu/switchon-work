@@ -21,9 +21,9 @@ interface Props {
 const MIN_CARD_WIDTH = 220;
 const GRID_GAP = 12;
 const ROW_HORIZONTAL_PADDING = 16; // matches .grid-row's left+right padding
-// Computed, not guessed, now that .card__name is 2-line-clamped and the
-// meta line is forced to one line (styles.css) -- every card has exactly
-// this body height, so this isn't really an "estimate" anymore:
+// Reserves space for a two-line name and a single metadata line. The name is
+// currently single-line ellipsized and metadata can wrap, so this remains an
+// estimate rather than an exact card height:
 //   padding-top 8 + name (2 lines @ 14px*1.3 line-height) 36.4
 //   + name margin 2 + meta line (13px*1.3) 16.9 + pill margin-top 6
 //   + pill box (12px*1.3 + 2px vertical padding) 17.6 + padding-bottom 10

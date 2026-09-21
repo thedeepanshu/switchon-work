@@ -28,11 +28,9 @@ interface UpdateAssetVars {
 }
 
 /**
- * Fixes defect #6: saving in the detail panel previously had nowhere to put
- * the result, so the grid kept showing stale data until an unrelated
- * refetch happened to overwrite it. This writes the update straight into
- * the shared TanStack Query cache the grid reads from, so the two views
- * can never disagree.
+ * Writes the update into the shared TanStack Query cache the grid reads from,
+ * so the grid and detail panel stay synchronized after this mutation, subject
+ * to later refetches or external updates.
  *
  * Optimistic, with rollback on any failure. 409 version_conflict gets no
  * special-cased retry here -- API.md says "No -- refetch first," and

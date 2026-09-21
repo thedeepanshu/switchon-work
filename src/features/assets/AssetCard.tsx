@@ -12,6 +12,7 @@ interface Props {
   tabIndex: number;
   onToggleSelect: (id: string, shiftKey: boolean) => void;
   onOpen: (id: string) => void;
+  onFocus: (id: string) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>, id: string) => void;
   onCardRef: (el: HTMLDivElement | null, id: string) => void;
 }
@@ -24,6 +25,7 @@ function AssetCardImpl({
   tabIndex,
   onToggleSelect,
   onOpen,
+  onFocus,
   onKeyDown,
   onCardRef,
 }: Props) {
@@ -33,6 +35,7 @@ function AssetCardImpl({
     <div
       ref={(el) => onCardRef(el, asset.id)}
       role="option"
+      aria-label={`${asset.name} ${selected ? 'selected' : 'not selected'} ${updating ? 'updating' : ''}`.trim()}
       aria-selected={selected}
       tabIndex={tabIndex}
       className={
@@ -42,6 +45,7 @@ function AssetCardImpl({
         (active ? ' card--active' : '')
       }
       onClick={() => onOpen(asset.id)}
+      onFocus={() => onFocus(asset.id)}
       onKeyDown={(e) => onKeyDown(e, asset.id)}
     >
       <AssetThumbnail asset={asset} className="card__thumb" />
@@ -62,6 +66,8 @@ function AssetCardImpl({
         className="card__check"
         tabIndex={-1}
         checked={selected}
+        aria-label={selected ? `Remove ${asset.name} from selection` : `Select ${asset.name}`}
+        aria-checked={selected}
         onClick={(e) => e.stopPropagation()}
         onChange={(e) => onToggleSelect(asset.id, !!(e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey))}
       />

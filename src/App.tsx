@@ -260,8 +260,8 @@ export function App() {
         )}
       </div>
 
-      <div className="sr-only" role="status" aria-live="polite">
-        {resultAnnouncement}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {notice || resultAnnouncement}
       </div>
 
       {selectedIds.size > 0 && (

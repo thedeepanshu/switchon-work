@@ -173,6 +173,11 @@ export function AssetGrid({
     else cardRefs.current.delete(id);
   }, []);
 
+  const handleCardFocus = useCallback((id: string) => {
+    const index = assetsRef.current.findIndex((a) => a.id === id);
+    if (index !== -1) setFocusedIndex(index);
+  }, []);
+
   const handleOpen = useCallback(
     (id: string) => {
       const index = assetsRef.current.findIndex((a) => a.id === id);
@@ -296,6 +301,7 @@ export function AssetGrid({
                       tabIndex={flatIndex === focusedIndex ? 0 : -1}
                       onToggleSelect={handleToggleSelect}
                       onOpen={handleOpen}
+                      onFocus={handleCardFocus}
                       onKeyDown={handleCardKeyDown}
                       onCardRef={registerCardRef}
                     />

@@ -4,6 +4,7 @@ import { formatBytes, formatDate, formatDuration, statusLabel } from '@/lib/form
 import { AssetThumbnail } from './AssetThumbnail';
 import { useUpdateAssetMutation } from './useUpdateAssetMutation';
 import type { Asset, AssetStatus } from '@/lib/types';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 const STATUSES: AssetStatus[] = ['draft', 'in_review', 'approved', 'archived'];
 
@@ -92,7 +93,12 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
           {saveNotice}
         </p>
       )}
-      {!asset && !loadError && <p className="muted">Loading…</p>}
+      {!asset && !loadError && (
+        <div className="panel__loading" role="status">
+          <LoadingSpinner size="md" label="Loading asset details" inline />
+          <span className="muted">Loading asset…</span>
+        </div>
+      )}
 
       {asset && (
         <div className="panel__body">
@@ -143,7 +149,11 @@ export function AssetDetail({ id, onClose, onSaved }: Props) {
                 disabled={saving || status === asset.status}
                 onClick={() => setStatus(status)}
               >
-                {statusLabel(status)}
+                {saving && status !== asset.status ? (
+                  <LoadingSpinner size={14} label={`Saving ${statusLabel(status)} status`} inline />
+                ) : (
+                  statusLabel(status)
+                )}
               </button>
             ))}
           </div>

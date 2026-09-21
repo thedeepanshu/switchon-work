@@ -2,10 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Asset } from '@/lib/types';
 import { AssetCard } from './AssetCard';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 interface Props {
   assets: Asset[];
   selectedIds: Set<string>;
+  updatingIds: Set<string>;
   activeId: string | null;
   onToggleSelect: (id: string, shiftKey: boolean) => void;
   onOpen: (id: string) => void;
@@ -49,7 +51,7 @@ function computeColumns(containerWidth: number): number {
 function estimateRowHeight(containerWidth: number, columns: number): number {
   const usable = containerWidth - ROW_HORIZONTAL_PADDING * 2;
   const cardWidth = (usable - GRID_GAP * (columns - 1)) / columns;
-  const thumbHeight = cardWidth * (10 / 16); // matches .card__thumb's aspect-ratio
+  const thumbHeight = cardWidth * (10 / 16);
   return thumbHeight + ESTIMATED_BODY_HEIGHT + GRID_GAP;
 }
 
@@ -71,6 +73,7 @@ function estimateRowHeight(containerWidth: number, columns: number): number {
 export function AssetGrid({
   assets,
   selectedIds,
+  updatingIds,
   activeId,
   onToggleSelect,
   onOpen,
@@ -250,11 +253,13 @@ export function AssetGrid({
     >
       {loading && assets.length === 0 ? (
         <div className="grid-state" role="status">
+          <LoadingSpinner size="lg" label="Loading assets" inline />
           <p>Loading assets…</p>
           <p className="muted">Please wait while the library loads.</p>
         </div>
       ) : error && assets.length === 0 ? (
         <div className="grid-state grid-state--error" role="alert">
+          <LoadingSpinner size="md" label="Load failed" inline />
           <p>We couldn’t load these assets.</p>
           <p className="muted">Check your connection and try again.</p>
         </div>
@@ -286,6 +291,7 @@ export function AssetGrid({
                       key={asset.id}
                       asset={asset}
                       selected={selectedIds.has(asset.id)}
+                      updating={updatingIds.has(asset.id)}
                       active={activeId === asset.id}
                       tabIndex={flatIndex === focusedIndex ? 0 : -1}
                       onToggleSelect={handleToggleSelect}
@@ -304,7 +310,8 @@ export function AssetGrid({
               role="status"
               style={{ transform: `translateY(${totalSize + TOP_INSET}px)` }}
             >
-              Loading more…
+              <LoadingSpinner size={16} label="Loading more assets" inline />
+              <span>Loading more…</span>
             </div>
           )}
         </div>

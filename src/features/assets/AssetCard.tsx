@@ -2,10 +2,12 @@ import { memo } from 'react';
 import { formatBytes, formatDate, statusLabel } from '@/lib/format';
 import { AssetThumbnail } from './AssetThumbnail';
 import type { Asset } from '@/lib/types';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 interface Props {
   asset: Asset;
   selected: boolean;
+  updating: boolean;
   active: boolean;
   tabIndex: number;
   onToggleSelect: (id: string, shiftKey: boolean) => void;
@@ -17,6 +19,7 @@ interface Props {
 function AssetCardImpl({
   asset,
   selected,
+  updating,
   active,
   tabIndex,
   onToggleSelect,
@@ -47,7 +50,12 @@ function AssetCardImpl({
         <p className="muted">
           {asset.kind} · {formatBytes(asset.sizeBytes)} · {formatDate(asset.updatedAt)}
         </p>
-        <span className={`pill pill--${asset.status}`}>{statusLabel(asset.status)}</span>
+        <span
+          className={`pill ${updating ? 'pill--updating' : `pill--${asset.status}`}`}
+          aria-label={updating ? 'Updating status' : statusLabel(asset.status)}
+        >
+          {updating ? <LoadingSpinner size={16} label="Updating status" inline /> : statusLabel(asset.status)}
+        </span>
       </div>
       <input
         type="checkbox"
@@ -55,7 +63,7 @@ function AssetCardImpl({
         tabIndex={-1}
         checked={selected}
         onClick={(e) => e.stopPropagation()}
-        onChange={(e) => onToggleSelect(asset.id, (e.nativeEvent as MouseEvent).shiftKey)}
+        onChange={(e) => onToggleSelect(asset.id, !!(e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey))}
       />
     </div>
   );

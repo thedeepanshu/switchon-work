@@ -8,6 +8,7 @@ import { statusLabel } from '@/lib/format';
 import { readFilterStateFromUrl, writeFilterStateToUrl } from '@/lib/urlState';
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
 import type { Asset, AssetKind, AssetStatus, AssetQuery } from '@/lib/types';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 
 const STATUSES: AssetStatus[] = ['draft', 'in_review', 'approved', 'archived'];
 const KINDS: AssetKind[] = ['image', 'video', 'document'];
@@ -35,6 +36,7 @@ export function App() {
     () => readFilterStateFromUrl(window.location.search).sort,
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [retryableBulkIds, setRetryableBulkIds] = useState<string[]>([]);
@@ -136,6 +138,8 @@ export function App() {
     setNotice(null);
     setRetryableBulkIds([]);
     setLastBulkStatus(next);
+    setUpdatingIds(new Set(ids));
+
     try {
       const outcome = await bulkStatusMutation.mutateAsync({ ids, status: next });
       const parts = [`${outcome.applied} updated`];
@@ -165,6 +169,8 @@ export function App() {
       setRetryableBulkIds(outcome.retryableFailed);
     } catch (err) {
       setNotice(err instanceof ApiError ? err.userMessage : err instanceof Error ? err.message : 'Bulk update failed');
+    } finally {
+      setUpdatingIds(new Set());
     }
   }
 
@@ -243,9 +249,10 @@ export function App() {
         </details>
         <span className="muted">
           {loading
-            ? 'Loading…'
+            ? 'Loading assets…'
             : `${items.length} of ${total.toLocaleString()} shown${isFetching ? ' — updating…' : ''}`}
         </span>
+        {isFetching && !loading && <LoadingSpinner size={16} label="Updating assets" inline />}
         {items.length > 0 && (
           <button type="button" onClick={selectAllLoaded}>
             Select all loaded ({items.length})
@@ -299,6 +306,7 @@ export function App() {
         <AssetGrid
           assets={items}
           selectedIds={selectedIds}
+          updatingIds={updatingIds}
           activeId={activeId}
           onToggleSelect={toggleSelect}
           onOpen={openDetail}

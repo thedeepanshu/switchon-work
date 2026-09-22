@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://switchon-assessment.onrender.com/api/:path*"
+    }
+  ]
+}

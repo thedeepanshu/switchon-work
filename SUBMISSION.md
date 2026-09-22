@@ -12,7 +12,7 @@
 ## Video walkthrough
 
 - A 5–10 minute walkthrough should cover the main asset workflow, including search, infinite scrolling, keyboard navigation, detail-panel editing, optimistic bulk updates, partial failures, and recovery.
-- **Link:** [Add Loom or equivalent link here.](https://www.loom.com/share/8491b59174dd4107ad22237eca182c72)
+- **Link:** [Click to  view video](https://www.loom.com/share/8491b59174dd4107ad22237eca182c72)
 
 ---
 
